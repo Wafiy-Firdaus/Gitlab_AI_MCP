@@ -146,6 +146,23 @@ gemini mcp add Gitlab_AI_MCP -- "$(pwd)/scripts/run_mcp.sh"
 
 If you prefer a static MCP config file, use `codex.mcp.toml.example` as a starting point.
 
+## First Use Demo
+
+Once your client is connected, a simple first session looks like this:
+
+1. Ask the agent to list your available GitLab projects.
+2. Ask it to open a specific merge request or issue.
+3. Ask it to summarize what changed.
+4. Ask it to inspect the pipeline or review discussions.
+5. Ask it to draft or post a reply.
+
+Example prompts:
+
+- `List my GitLab projects and identify the one most recently active.`
+- `Read merge request !42 in project group/project and summarize the risks.`
+- `Inspect the latest failed pipeline for group/project and tell me the root cause.`
+- `Open issue #17 in group/project and draft a concise update comment.`
+
 ## Main Tool Areas
 
 This server is organized around a few high-value domains:
@@ -185,13 +202,19 @@ Example values are included in `.env.example`.
 
 ## Tested Usage
 
-This project is structured for:
+This repository is structured so all supported clients use the same checked launcher and Docker runtime path:
 
 - Codex CLI via `mcp add`
 - Claude Code via `mcp add`
 - Gemini CLI via `mcp add`
 
-The shared launcher keeps all three clients on the same runtime path, which reduces client-specific drift.
+That matters because it keeps client setup consistent:
+
+- the same launcher is registered everywhere
+- the same Docker service is used everywhere
+- the same MCP server process is exposed everywhere
+
+In practice, this reduces client-specific drift and makes debugging setup problems much easier.
 
 ## Project Layout
 
