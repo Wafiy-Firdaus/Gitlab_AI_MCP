@@ -1,0 +1,27 @@
+# Gemini CLI Ignore File
+# Ignore directories that are not needed for context
+
+__pycache__/
+.ruff_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+.vscode/
+.git/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.skill
+dist/
+build/
+*.egg-info/
+venv/
+.env
+
+# Large JSON artifacts from previous runs
+mr_changes.json
+mr_discussions_pretty.json
+mr_discussions.json
+mr_metadata.json
+mr_notes_pretty.json
+mr_notes.json

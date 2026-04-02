@@ -1,0 +1,2 @@
+[mcp_servers.Gitlab_AI_MCP]
+command = "/absolute/path/to/Gitlab_AI_MCP/scripts/run_mcp.sh"

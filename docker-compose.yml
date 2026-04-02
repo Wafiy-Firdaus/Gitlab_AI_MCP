@@ -1,0 +1,36 @@
+services:
+  gitlab-ai-mcp:
+    build: .
+    env_file: .env
+    environment:
+      - LOCAL_AI_URL=http://ollama:11434
+    command: ["sleep", "infinity"]
+    stdin_open: true
+    tty: true
+    depends_on:
+      - ollama
+    volumes:
+      - .:/app
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    # Optional NVIDIA GPU acceleration. Remove this block if you run Ollama on CPU only.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Automatic model downloader
+  ollama-pull:
+    image: curlimages/curl:latest
+    depends_on:
+      - ollama
+    entrypoint: [ "sh", "-c", "sleep 5 && curl http://ollama:11434/api/pull -d '{\"name\": \"llama3.1:8b\"}'" ]
+
+volumes:
+  ollama_data:
