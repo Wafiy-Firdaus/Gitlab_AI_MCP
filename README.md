@@ -109,8 +109,8 @@ docker compose up -d --build
 This starts:
 
 - `gitlab-ai-mcp`: the MCP server runtime
-- `ollama`: optional local LLM service used by local triage tools
-- `ollama-pull`: helper container that pre-pulls the configured local model
+- `ollama`: optional local LLM service used only for local AI-assisted triage tools
+- `ollama-pull`: helper container that pre-pulls the local model used by those optional triage tools
 
 4. Register the MCP server in your client using the shared launcher:
 
@@ -196,7 +196,7 @@ The main environment variables are:
 - `GITLAB_TOKEN`: GitLab Personal Access Token
 - `DEBUG`: enables console-friendly logging
 - `LOCAL_AI_URL`: Ollama base URL
-- `LOCAL_AI_MODEL`: model name for local triage features
+- `LOCAL_AI_MODEL`: model name used by optional local triage features
 
 Example values are included in `.env.example`.
 
@@ -252,7 +252,7 @@ Make sure Docker is running and that `docker compose` works from the project dir
 
 ### Ollama is unavailable
 
-Most GitLab tools still work without Ollama. Only the local AI-assisted triage features depend on it.
+Most GitLab tools still work without Ollama. Only the optional local AI-assisted triage features depend on it.
 
 ### Push, merge, or variable-management actions fail
 
@@ -264,6 +264,7 @@ That usually means the token scope is too narrow or the GitLab account lacks per
 - use least-privilege GitLab tokens where possible
 - use a dedicated token for this integration if you can
 - upload fetching prefers authenticated headers and only falls back to query-string token auth when a GitLab web route rejects header-based auth
+- Ollama is optional and is only relevant for local AI-assisted triage features
 
 ## Summary
 
