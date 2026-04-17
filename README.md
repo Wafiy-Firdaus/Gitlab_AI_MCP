@@ -49,7 +49,26 @@ docker compose --profile ollama up -d --build
 ```
 
 **Option C — With local AI, NVIDIA GPU** (fastest inference):
+
+> **Prerequisites for GPU:** You must install the NVIDIA Container Toolkit before running Option C.
+> Skip this if you don't have an NVIDIA GPU — Option B works fine on CPU.
+
 ```bash
+# 1. Install NVIDIA Container Toolkit (Ubuntu/Debian)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt update && sudo apt install -y nvidia-container-toolkit
+
+# 2. Configure Docker to use NVIDIA runtime
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+
+# 3. Verify your GPU is visible to Docker
+docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
+
+# 4. Start the stack with GPU
 docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
