@@ -22,13 +22,8 @@ wheels/
 *.egg
 .pytest_cache/
 .coverage
-.coverage.*
 .cache/
 .mypy_cache/
-.ruff_cache/
-htmlcov/
-.tox/
-.nox/
 
 # Environment
 .env
@@ -41,16 +36,6 @@ ENV/
 .idea/
 *.swp
 *.swo
-.DS_Store
-Thumbs.db
 
 # MCP
 .mcp/
-.codex/
-
-# Gemini CLI
-.gemini/
-
-# Claude Code
-.claude/
-CLAUDE.md

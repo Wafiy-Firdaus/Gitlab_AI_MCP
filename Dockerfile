@@ -7,9 +7,8 @@ WORKDIR /app
 # Copy all project files to allow the build backend to find the code
 COPY . .
 
-# Install runtime and local test dependencies.
-# The public compose stack doubles as a validation environment for contributors.
-RUN pip install --no-cache-dir . pytest pytest-asyncio
+# Install dependencies
+RUN pip install --no-cache-dir .
 
 # Expose the port if running as an SSE server (optional for stdio)
 EXPOSE 8000

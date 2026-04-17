@@ -11,18 +11,20 @@ def register_merge_request_tools(mcp: FastMCP):
     async def get_merge_request_details(
         project_id: int | str | None = None, 
         mr_iid: int | None = None,
-        url: str | None = None
+        url: str | None = None,
+        include_jobs: bool = False
     ) -> dict[str, Any]:
         """
         Get detailed information about a merge request.
         You can either provide a full GitLab URL or explicit project_id and mr_iid.
+        Set 'include_jobs' to True to fetch pipeline jobs for the head pipeline in the same call.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
         if p_id is None or m_iid is None:
             return {"error": "Missing project_id/mr_iid or valid URL"}
-        return await service.get_merge_request_details(p_id, m_iid)
+        return await service.get_merge_request_details(p_id, m_iid, include_jobs=include_jobs)
 
     @mcp.tool()
     async def create_merge_request(
@@ -142,30 +144,52 @@ def register_merge_request_tools(mcp: FastMCP):
     async def get_merge_request_diffs(
         project_id: int | str | None = None, 
         mr_iid: int | None = None,
-        url: str | None = None
+        url: str | None = None,
+        paths: list[str] | None = None
     ) -> dict[str, Any]:
         """
         View code changes (diffs) for a merge request.
         Supports full URL or explicit IDs.
+        Set 'paths' to a list of file paths to filter the diffs to only those files.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
-        return await service.get_merge_request_diffs(p_id, m_iid)
+        return await service.get_merge_request_diffs(p_id, m_iid, paths=paths)
 
     @mcp.tool()
-    async def get_merge_request_discussions(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+    async def get_merge_request_discussions(
+        project_id: int | str, 
+        mr_iid: int, 
+        unresolved_only: bool = False, 
+        include_system: bool = True
+    ) -> dict[str, Any]:
         """
         List all discussions (threads) for a merge request.
+        Set 'unresolved_only' to True to filter out resolved threads.
+        Set 'include_system' to False to exclude automated GitLab notes (e.g., branch updates).
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.list_merge_request_discussions(project_id, mr_iid)
+        return await service.list_merge_request_discussions(project_id, mr_iid, unresolved_only, include_system)
 
     @mcp.tool()
-    async def add_merge_request_discussion_note(project_id: int | str, mr_iid: int, discussion_id: str, body: str) -> dict[str, Any]:
+    async def list_merge_request_discussion_summaries(project_id: int | str, mr_iid: int, unresolved_only: bool = False) -> dict[str, Any]:
+        """
+        Get a lightweight summary of all discussions in an MR.
+        Returns ID, author, first line, resolution status, and note count for each thread.
+        Set 'unresolved_only' to True to filter out resolved threads.
+        Ideal for quickly navigating large MRs with many comments.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.list_merge_request_discussion_summaries(project_id, mr_iid, unresolved_only)
+
+    @mcp.tool()
+    async def reply_to_discussion(project_id: int | str, mr_iid: int, discussion_id: str, body: str) -> dict[str, Any]:
         """
         Reply to an existing discussion thread on a merge request.
+        Requires only the 'discussion_id' (e.g., from list_merge_request_discussion_summaries).
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
@@ -173,18 +197,219 @@ def register_merge_request_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def create_merge_request_discussion(
-        project_id: int | str, 
-        mr_iid: int, 
-        body: str, 
-        position: dict[str, Any] | None = None
+        project_id: int | str,
+        mr_iid: int,
+        body: str,
+        position: dict[str, Any] | None = None,
+        new_path: str | None = None,
+        old_path: str | None = None,
+        new_line: int | None = None,
+        old_line: int | None = None,
     ) -> dict[str, Any]:
         """
         Create a new discussion thread on a merge request.
         Can be used for inline diff comments by providing 'position'.
+        Alternatively, provide new_path + new_line/old_line and SHAs will be resolved automatically.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.create_merge_request_discussion(project_id, mr_iid, body, position)
+        resolved_position = position
+        if position is None and new_path:
+            resolved_position = await client.build_text_diff_position(
+                project_id, mr_iid, new_path, old_path=old_path, new_line=new_line, old_line=old_line
+            )
+        return await service.create_merge_request_discussion(project_id, mr_iid, body, resolved_position)
+
+    @mcp.tool()
+    async def get_latest_merge_request_version(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+        """
+        [Read] Latest MR version SHAs (diff comments).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.get_latest_merge_request_version(project_id, mr_iid)
+
+    @mcp.tool()
+    async def build_diff_position(
+        project_id: int | str,
+        mr_iid: int,
+        new_path: str,
+        old_path: str | None = None,
+        new_line: int | None = None,
+        old_line: int | None = None,
+    ) -> dict[str, Any]:
+        """
+        [Read] Build text diff position from paths + lines (resolves SHAs).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.build_text_diff_position(
+            project_id, mr_iid, new_path, old_path=old_path, new_line=new_line, old_line=old_line
+        )
+
+    @mcp.tool()
+    async def preview_diff_comment_payload(
+        project_id: int | str,
+        mr_iid: int,
+        body: str,
+        new_path: str,
+        old_path: str | None = None,
+        new_line: int | None = None,
+        old_line: int | None = None,
+        draft: bool = False,
+    ) -> dict[str, Any]:
+        """
+        [Read] Preview diff comment payload (no writes).
+        """
+        client = await GitLabClient.get_instance()
+        position = await client.build_text_diff_position(
+            project_id, mr_iid, new_path, old_path=old_path, new_line=new_line, old_line=old_line
+        )
+        mode = "draft_diff_note" if draft else "diff_thread"
+        return {
+            "summary": "Preview diff comment payload",
+            "key_findings": [f"Mode: {mode}"],
+            "details": {
+                "project_id": project_id,
+                "merge_request_iid": mr_iid,
+                "preview": {
+                    "mode": mode,
+                    "body": body,
+                    "draft": draft,
+                    "position": position,
+                },
+            },
+            "next_action": "Review the payload before posting.",
+        }
+
+    @mcp.tool()
+    async def get_review_summary(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+        """
+        [Read] Totals + per-file breakdown. Threads omitted unless include_discussions=true.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.get_review_summary(project_id, mr_iid)
+
+    @mcp.tool()
+    async def get_unresolved_discussion_digest(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+        """
+        [Read] Unresolved threads: compact + theme hint.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.get_unresolved_discussion_digest(project_id, mr_iid)
+
+    @mcp.tool()
+    async def get_suggested_replies(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+        """
+        [Read] Template replies per unresolved thread.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.get_suggested_replies(project_id, mr_iid)
+
+    @mcp.tool()
+    async def get_review_digest(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+        """
+        [Read] Combined digest (totals, files, items, suggested replies).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.get_review_digest(project_id, mr_iid)
+
+    @mcp.tool()
+    async def get_draft_reply_plan(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+        """
+        [Read] Plan to stage replies (target_mode) from unresolved discussions.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.get_draft_reply_plan(project_id, mr_iid)
+
+    @mcp.tool()
+    async def list_draft_notes(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+        """
+        [Read] Your draft notes on MR (normalized).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.list_merge_request_draft_notes(project_id, mr_iid)
+
+    @mcp.tool()
+    async def create_draft_note(
+        project_id: int | str,
+        mr_iid: int,
+        body: str,
+        position: dict[str, Any] | None = None,
+        discussion_id: str | None = None,
+        resolve_discussion: bool | None = None,
+        new_path: str | None = None,
+        old_path: str | None = None,
+        new_line: int | None = None,
+        old_line: int | None = None,
+    ) -> dict[str, Any]:
+        """
+        [Stage] Draft note: raw position, simple diff, or reply by discussion_id.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        resolved_position = position
+        if position is None and new_path:
+            resolved_position = await client.build_text_diff_position(
+                project_id, mr_iid, new_path, old_path=old_path, new_line=new_line, old_line=old_line
+            )
+        return await service.create_merge_request_draft_note(
+            project_id,
+            mr_iid,
+            body,
+            position=resolved_position,
+            discussion_id=discussion_id,
+            resolve_discussion=resolve_discussion,
+        )
+
+    @mcp.tool()
+    async def delete_draft_note(project_id: int | str, mr_iid: int, draft_note_id: int) -> dict[str, Any]:
+        """
+        [Stage] Remove one draft note.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.delete_merge_request_draft_note(project_id, mr_iid, draft_note_id)
+
+    @mcp.tool()
+    async def publish_draft_notes(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+        """
+        [Publish] Bulk-publish all your drafts on the MR.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.publish_merge_request_draft_notes(project_id, mr_iid)
+
+    @mcp.tool()
+    async def bulk_reply_to_discussions(
+        project_id: int | str, mr_iid: int, replies: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """
+        [Direct write] Bulk public replies (per-item errors).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.bulk_reply_to_discussions(project_id, mr_iid, replies)
+
+    @mcp.tool()
+    async def bulk_resolve_discussions(
+        project_id: int | str,
+        mr_iid: int,
+        discussion_ids: list[str],
+        resolved: bool = True,
+    ) -> dict[str, Any]:
+        """
+        [Direct write] Bulk resolve/reopen (per-item errors).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.bulk_resolve_discussions(project_id, mr_iid, discussion_ids, resolved)
 
     @mcp.tool()
     async def list_merge_request_pipelines(project_id: int | str, mr_iid: int) -> dict[str, Any]:
@@ -196,9 +421,10 @@ def register_merge_request_tools(mcp: FastMCP):
         return await service.list_merge_request_pipelines(project_id, mr_iid)
 
     @mcp.tool()
-    async def resolve_merge_request_discussion(project_id: int | str, mr_iid: int, discussion_id: str, resolved: bool = True) -> dict[str, Any]:
+    async def resolve_discussion(project_id: int | str, mr_iid: int, discussion_id: str, resolved: bool = True) -> dict[str, Any]:
         """
         Mark a discussion thread as resolved or unresolved.
+        Requires only the 'discussion_id' (no note_id needed).
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)

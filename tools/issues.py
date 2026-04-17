@@ -36,6 +36,30 @@ def register_issue_tools(mcp: FastMCP):
         return await service.get_issue_details(p_id, i_iid)
 
     @mcp.tool()
+    async def create_issue(
+        project_id: int | str,
+        title: str,
+        description: str | None = None,
+        labels: str | None = None,
+        assignee_ids: list[int] | None = None,
+        milestone_id: int | None = None
+    ) -> dict[str, Any]:
+        """
+        Create a new issue in a project.
+        'labels' should be a comma-separated string.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.create_issue(
+            project_id,
+            title,
+            description=description,
+            labels=labels,
+            assignee_ids=assignee_ids,
+            milestone_id=milestone_id
+        )
+
+    @mcp.tool()
     async def update_issue(
         project_id: int | str, 
         issue_iid: int, 

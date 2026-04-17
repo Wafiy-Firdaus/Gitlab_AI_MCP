@@ -1,3 +1,4 @@
+import asyncio
 import re
 import urllib.parse
 from typing import Any, Optional
@@ -22,22 +23,42 @@ class GitLabClient:
         self.client = httpx.AsyncClient(
             base_url=self.base_url,
             headers=self.headers,
-            timeout=httpx.Timeout(30.0, connect=5.0),
+            # Maximize handshake buffer for slow self-hosted instances
+            timeout=httpx.Timeout(60.0, connect=30.0),
             follow_redirects=True,
             http2=True,
-            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
+            limits=httpx.Limits(
+                max_keepalive_connections=20, 
+                max_connections=100,
+                keepalive_expiry=60.0
+            )
         )
 
     @classmethod
     async def get_instance(cls) -> 'GitLabClient':
         if cls._instance is None:
             cls._instance = cls()
+            # Proactive warmup in background
+            asyncio.create_task(cls._instance.warmup())
         return cls._instance
+
+    async def warmup(self):
+        """
+        Warms up the connection pool with retries for cold starts.
+        """
+        for attempt in range(2):
+            try:
+                await self.get_current_user()
+                logger.info("gitlab_connection_warmed_up", attempt=attempt+1)
+                return
+            except Exception as e:
+                if attempt == 0:
+                    await asyncio.sleep(1.0)
+                    continue
+                logger.warning("gitlab_warmup_failed", error=str(e))
 
     async def aclose(self):
         await self.client.aclose()
-        if GitLabClient._instance is self:
-            GitLabClient._instance = None
 
     async def __aenter__(self):
         return self
@@ -123,32 +144,142 @@ class GitLabClient:
             f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/versions/{version_id}"
         )
 
+    async def get_latest_merge_request_version(self, project_id: int | str, mr_iid: int) -> dict[str, Any]:
+        """Fetches the latest MR diff version and returns normalized SHAs for diff comments."""
+        versions = await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/versions"
+        )
+        if not versions:
+            raise ValueError(
+                "No merge request versions returned — cannot resolve base_sha/start_sha/head_sha for diff comments."
+            )
+        latest = versions[0]
+        base_sha = latest.get("base_commit_sha", "")
+        start_sha = latest.get("start_commit_sha", "")
+        head_sha = latest.get("head_commit_sha", "")
+        if not base_sha or not start_sha or not head_sha:
+            raise ValueError(
+                "Merge request version is missing base_commit_sha, start_commit_sha, or head_commit_sha."
+            )
+        return {
+            "id": latest.get("id"),
+            "base_sha": base_sha,
+            "start_sha": start_sha,
+            "head_sha": head_sha,
+            "created_at": latest.get("created_at", ""),
+            "real_size": latest.get("real_size", ""),
+        }
+
+    async def build_text_diff_position(
+        self,
+        project_id: int | str,
+        mr_iid: int,
+        new_path: str,
+        old_path: str | None = None,
+        new_line: int | None = None,
+        old_line: int | None = None,
+    ) -> dict[str, Any]:
+        """Resolves the latest MR version SHAs and builds a GitLab text position object."""
+        if not new_path or not new_path.strip():
+            raise ValueError("Simple diff position requires non-empty new_path.")
+        if new_line is None and old_line is None:
+            raise ValueError(
+                "Simple diff position requires at least one of old_line or new_line (positive integers)."
+            )
+        version = await self.get_latest_merge_request_version(project_id, mr_iid)
+        position: dict[str, Any] = {
+            "position_type": "text",
+            "base_sha": version["base_sha"],
+            "start_sha": version["start_sha"],
+            "head_sha": version["head_sha"],
+            "old_path": old_path.strip() if old_path and old_path.strip() else new_path.strip(),
+            "new_path": new_path.strip(),
+        }
+        if old_line is not None:
+            position["old_line"] = old_line
+        if new_line is not None:
+            position["new_line"] = new_line
+        return position
+
     async def _request(self, method: str, endpoint: str, **kwargs) -> httpx.Response:
-        try:
-            response = await self.client.request(method, endpoint, **kwargs)
-            response.raise_for_status()
-            return response
-        except httpx.HTTPStatusError as e:
-            logger.error("gitlab_api_error", 
-                         status_code=e.response.status_code, 
-                         endpoint=endpoint, 
-                         error=e.response.text)
-            raise
-        except Exception as e:
-            logger.error("gitlab_unexpected_error", endpoint=endpoint, error=str(e))
-            raise
+        """
+        Centralized request method with rate-limiting and retry logic.
+        """
+        max_retries = settings.gitlab_max_retries
+        retry_delay = settings.gitlab_retry_delay
+        
+        for attempt in range(max_retries + 1):
+            try:
+                # Handle relative endpoints
+                url = endpoint
+                if not url.startswith("http"):
+                    url = f"{self.base_url}/{endpoint.lstrip('/')}"
+                
+                response = await self.client.request(method, url, **kwargs)
+                
+                # Check for 429 Too Many Requests
+                if response.status_code == 429:
+                    if attempt < max_retries:
+                        # Extract Retry-After header if present
+                        wait_time = float(response.headers.get("Retry-After", retry_delay * (2 ** attempt)))
+                        logger.warning("rate_limit_exceeded", 
+                                       attempt=attempt + 1, 
+                                       wait_time=wait_time, 
+                                       endpoint=endpoint)
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        response.raise_for_status()
+                
+                response.raise_for_status()
+                return response
+
+            except httpx.HTTPStatusError as e:
+                # Only retry on 429 or 5xx
+                if attempt < max_retries and (e.response.status_code == 429 or 500 <= e.response.status_code < 600):
+                    wait_time = retry_delay * (2 ** attempt)
+                    logger.warning("gitlab_retry_request",
+                                   status_code=e.response.status_code,
+                                   attempt=attempt + 1,
+                                   wait_time=wait_time,
+                                   endpoint=endpoint)
+                    await asyncio.sleep(wait_time)
+                    continue
+                
+                logger.error("gitlab_api_error", 
+                             status_code=e.response.status_code, 
+                             endpoint=endpoint, 
+                             error=e.response.text)
+                raise
+            except (httpx.RequestError, Exception) as e:
+                if attempt < max_retries:
+                    wait_time = retry_delay * (2 ** attempt)
+                    logger.warning("gitlab_unexpected_retry",
+                                   error=str(e),
+                                   attempt=attempt + 1,
+                                   wait_time=wait_time,
+                                   endpoint=endpoint)
+                    await asyncio.sleep(wait_time)
+                    continue
+                
+                logger.error("gitlab_unexpected_error", endpoint=endpoint, error=str(e))
+                raise
+        
+        # This part should theoretically not be reached due to raises in the loop
+        raise Exception(f"Failed to request {endpoint} after {max_retries} retries")
 
     async def get(self, endpoint: str, params: dict[str, Any] | None = None) -> Any:
         response = await self._request("GET", endpoint, params=params)
         return response.json() if response.content else None
 
-    async def get_all(self, endpoint: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    async def get_all(self, endpoint: str, params: dict[str, Any] | None = None, limit: int | None = None) -> list[dict[str, Any]]:
         """
-        Helper to fetch all pages for a paginated endpoint.
+        Helper to fetch all pages for a paginated endpoint, up to an optional limit.
         """
         all_results = []
         current_params = (params or {}).copy()
-        current_params["per_page"] = 100
+        # Optimization: Don't request 100 items if we only need a few
+        current_params["per_page"] = min(100, limit or 100)
         
         while True:
             response = await self._request("GET", endpoint, params=current_params)
@@ -157,6 +288,10 @@ class GitLabClient:
                 break
             
             all_results.extend(results)
+            
+            # Stop if we've reached the limit
+            if limit and len(all_results) >= limit:
+                return all_results[:limit]
             
             next_page = response.headers.get("X-Next-Page")
             if not next_page:
@@ -184,20 +319,46 @@ class GitLabClient:
         params = {"state": state, "scope": scope}
         return await self.get("/issues", params=params)
 
-    async def list_projects(self, search: str | None = None, membership: bool = True) -> list[dict[str, Any]]:
+    async def list_projects(self, search: str | None = None, membership: bool = True, group_id: int | str | None = None, limit: int | None = 100) -> list[dict[str, Any]]:
         params = {"membership": str(membership).lower()}
         if search:
             params["search"] = search
-        return await self.get("/projects", params=params)
+        
+        endpoint = "/projects"
+        if group_id:
+            endpoint = f"/groups/{self._format_project_id(group_id)}/projects"
+            
+        return await self.get_all(endpoint, params=params, limit=limit)
+
+    async def list_group_projects(self, group_id: int | str, limit: int | None = 100) -> list[dict[str, Any]]:
+        return await self.get_all(f"/groups/{self._format_project_id(group_id)}/projects", limit=limit)
 
     async def get_project(self, project_id: int | str) -> dict[str, Any]:
         return await self.get(f"/projects/{self._format_project_id(project_id)}")
+
+    async def list_branches(self, project_id: int | str) -> list[dict[str, Any]]:
+        return await self.get_all(f"/projects/{self._format_project_id(project_id)}/repository/branches")
+
+    async def get_branch(self, project_id: int | str, branch: str) -> dict[str, Any]:
+        return await self.get(f"/projects/{self._format_project_id(project_id)}/repository/branches/{urllib.parse.quote(branch, safe='')}")
+
+    async def list_tags(self, project_id: int | str, limit: int | None = 50) -> list[dict[str, Any]]:
+        return await self.get_all(f"/projects/{self._format_project_id(project_id)}/repository/tags", limit=limit)
+
+    async def get_tag(self, project_id: int | str, tag: str) -> dict[str, Any]:
+        return await self.get(f"/projects/{self._format_project_id(project_id)}/repository/tags/{urllib.parse.quote(tag, safe='')}")
 
     async def list_issues(self, project_id: int | str, state: str = "opened") -> list[dict[str, Any]]:
         return await self.get(f"/projects/{self._format_project_id(project_id)}/issues", params={"state": state})
 
     async def get_issue(self, project_id: int | str, issue_iid: int) -> dict[str, Any]:
         return await self.get(f"/projects/{self._format_project_id(project_id)}/issues/{issue_iid}")
+
+    async def create_issue(self, project_id: int | str, data: dict[str, Any]) -> dict[str, Any]:
+        return await self.post(f"/projects/{self._format_project_id(project_id)}/issues", data=data)
+
+    async def get_issue_related_mrs(self, project_id: int | str, issue_iid: int) -> list[dict[str, Any]]:
+        return await self.get(f"/projects/{self._format_project_id(project_id)}/issues/{issue_iid}/related_merge_requests")
 
     async def update_issue(self, project_id: int | str, issue_iid: int, data: dict[str, Any]) -> dict[str, Any]:
         return await self.put(f"/projects/{self._format_project_id(project_id)}/issues/{issue_iid}", data=data)
@@ -280,13 +441,8 @@ class GitLabClient:
         return await self.get(f"/projects/{self._format_project_id(project_id)}/pipelines/{pipeline_id}/bridges")
 
     async def get_job_log(self, project_id: int | str, job_id: int) -> str:
-        try:
-            response = await self.client.get(f"/projects/{self._format_project_id(project_id)}/jobs/{job_id}/trace")
-            response.raise_for_status()
-            return response.text
-        except httpx.HTTPStatusError as e:
-            logger.error("job_log_error", status_code=e.response.status_code, job_id=job_id)
-            raise
+        response = await self._request("GET", f"/projects/{self._format_project_id(project_id)}/jobs/{job_id}/trace")
+        return response.text
 
     async def get_merge_request_discussions(self, project_id: int | str, mr_iid: int) -> list[dict[str, Any]]:
         return await self.get_all(f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/discussions")
@@ -302,8 +458,7 @@ class GitLabClient:
         return await self.post(f"/projects/{self._format_project_id(project_id)}/pipelines/{pipeline_id}/retry")
 
     async def get_job_artifact_file(self, project_id: int | str, job_id: int, artifact_path: str) -> str:
-        response = await self.client.get(f"/projects/{self._format_project_id(project_id)}/jobs/{job_id}/artifacts/{artifact_path}")
-        response.raise_for_status()
+        response = await self._request("GET", f"/projects/{self._format_project_id(project_id)}/jobs/{job_id}/artifacts/{artifact_path}")
         return response.text
 
     async def list_repository_commits(self, project_id: int | str, ref_name: str | None = None) -> list[dict[str, Any]]:
@@ -349,6 +504,51 @@ class GitLabClient:
             data["position"] = position
         return await self.post(f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/discussions", data=data)
 
+    async def list_merge_request_draft_notes(self, project_id: int | str, mr_iid: int) -> list[dict[str, Any]]:
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/draft_notes"
+        )
+
+    async def create_merge_request_draft_note(
+        self,
+        project_id: int | str,
+        mr_iid: int,
+        body: str,
+        position: dict[str, Any] | None = None,
+        discussion_id: str | None = None,
+        resolve_discussion: bool | None = None,
+        commit_id: str | None = None,
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {"note": body}
+        if position is not None:
+            data["position"] = position
+        if discussion_id is not None:
+            data["in_reply_to_discussion_id"] = discussion_id
+        if resolve_discussion is not None:
+            data["resolve_discussion"] = resolve_discussion
+        if commit_id is not None:
+            data["commit_id"] = commit_id
+        return await self.post(
+            f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/draft_notes",
+            data=data,
+        )
+
+    async def publish_merge_request_draft_notes(self, project_id: int | str, mr_iid: int) -> Any:
+        response = await self._request(
+            "POST",
+            f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/draft_notes/bulk_publish",
+        )
+        return response.json() if response.content else None
+
+    async def delete_merge_request_draft_note(
+        self, project_id: int | str, mr_iid: int, draft_note_id: int
+    ) -> Any:
+        response = await self._request(
+            "DELETE",
+            f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/draft_notes/{draft_note_id}",
+        )
+        return response.json() if response.content else None
+
     async def update_note(self, project_id: int | str, resource_type: str, resource_iid: int, note_id: int, body: str) -> dict[str, Any]:
         return await self.put(f"/projects/{self._format_project_id(project_id)}/{resource_type}/{resource_iid}/notes/{note_id}", data={"body": body})
 
@@ -377,8 +577,7 @@ class GitLabClient:
         return await self.post(f"/projects/{self._format_project_id(project_id)}/repository/commits", data=data)
 
     async def get_job_artifacts_archive(self, project_id: int | str, job_id: int) -> bytes:
-        response = await self.client.get(f"/projects/{self._format_project_id(project_id)}/jobs/{job_id}/artifacts")
-        response.raise_for_status()
+        response = await self._request("GET", f"/projects/{self._format_project_id(project_id)}/jobs/{job_id}/artifacts")
         return response.content
 
     async def get_raw_file(self, raw_url: str) -> str:
@@ -386,10 +585,7 @@ class GitLabClient:
         Accepts full URL or a path relative to the GitLab root.
         Returns the raw text content.
         """
-        raw_url = self._build_absolute_url(raw_url)
-
-        response = await self.client.get(raw_url)
-        response.raise_for_status()
+        response = await self._request("GET", self._build_absolute_url(raw_url))
         return response.text
 
     async def fetch_upload(self, upload_url: str) -> tuple[bytes, str]:
@@ -398,19 +594,26 @@ class GitLabClient:
         Returns (content_bytes, content_type).
         """
         upload_url = self._build_absolute_url(upload_url)
-        response = await self.client.get(upload_url)
 
-        if response.status_code in (401, 403):
-            tokenized_url = self._append_private_token(upload_url)
-            logger.warning(
-                "upload_header_auth_failed_falling_back_to_query_token",
-                url=self._redact_url(tokenized_url),
-                status_code=response.status_code,
-            )
-            response = await self.client.get(tokenized_url)
+        # Append private_token as query param — GitLab web routes don't accept PRIVATE-TOKEN header
+        auth_url = self._append_private_token(upload_url)
 
-        response.raise_for_status()
-        return response.content, response.headers.get("content-type", "application/octet-stream")
+        try:
+            response = await self._request("GET", auth_url)
+            return response.content, response.headers.get("content-type", "application/octet-stream")
+        except httpx.HTTPStatusError as e:
+            # If CDN redirect strips auth and returns 401/403, retry without auth header
+            if e.response.status_code in (401, 403):
+                logger.warning(
+                    "upload_header_auth_failed_falling_back_to_query_token",
+                    url=self._redact_url(auth_url),
+                    status_code=e.response.status_code,
+                )
+                async with httpx.AsyncClient(follow_redirects=True) as anon:
+                    response = await anon.get(upload_url)
+                    response.raise_for_status()
+                    return response.content, response.headers.get("content-type", "application/octet-stream")
+            raise
 
     async def cancel_pipeline(self, project_id: int | str, pipeline_id: int) -> dict[str, Any]:
         return await self.post(f"/projects/{self._format_project_id(project_id)}/pipelines/{pipeline_id}/cancel")
@@ -438,3 +641,28 @@ class GitLabClient:
 
     async def delete_project_variable(self, project_id: int | str, key: str) -> dict[str, Any]:
         return await self.delete(f"/projects/{self._format_project_id(project_id)}/variables/{key}")
+
+    async def list_vulnerability_findings(self, project_id: int | str, severity: list[str] | None = None, report_type: list[str] | None = None, scope: str = "all") -> list[dict[str, Any]]:
+        """
+        List vulnerability findings for a project.
+        Requires GitLab Ultimate for some features, but basic findings often available in pipelines.
+        """
+        params = {"scope": scope}
+        if severity: params["severity"] = severity
+        if report_type: params["report_type"] = report_type
+        return await self.get(f"/projects/{self._format_project_id(project_id)}/vulnerability_findings", params=params)
+
+    async def get_vulnerability_details(self, project_id: int | str, vulnerability_id: int) -> dict[str, Any]:
+        return await self.get(f"/projects/{self._format_project_id(project_id)}/vulnerabilities/{vulnerability_id}")
+
+    async def list_project_dependencies(self, project_id: int | str) -> list[dict[str, Any]]:
+        """
+        List dependencies for a project (Dependency Scanning).
+        """
+        return await self.get_all(f"/projects/{self._format_project_id(project_id)}/dependencies")
+
+    async def list_audit_events(self, project_id: int | str) -> list[dict[str, Any]]:
+        """
+        List audit events for a project.
+        """
+        return await self.get_all(f"/projects/{self._format_project_id(project_id)}/audit_events")

@@ -11,6 +11,7 @@ from tools.merge_requests import register_merge_request_tools
 from tools.projects import register_project_tools
 from tools.repository import register_repository_tools
 from tools.search import register_search_tools
+from tools.security import register_security_tools
 
 # Configure structured logging
 structlog.configure(
@@ -29,7 +30,7 @@ logger = structlog.get_logger(__name__)
 
 # Initialize FastMCP server
 mcp = FastMCP(
-    "Gitlab_AI_MCP",
+    "Git2u GitLab MCP",
     dependencies=["httpx", "pydantic", "pydantic-settings", "structlog"]
 )
 
@@ -40,6 +41,7 @@ register_merge_request_tools(mcp)
 register_search_tools(mcp)
 register_repository_tools(mcp)
 register_ci_cd_tools(mcp)
+register_security_tools(mcp)
 
 # MCP Prompt Templates
 @mcp.prompt()

@@ -1,271 +1,145 @@
-# Gitlab_AI_MCP
+# Gitlab AI MCP Server
 
-`Gitlab_AI_MCP` is a local Model Context Protocol server for GitLab. It gives MCP-capable coding agents such as Codex CLI, Claude Code, and Gemini CLI a practical interface to GitLab projects, merge requests, issues, repositories, and pipelines through one shared integration.
+A high-performance, containerized [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for integrating AI coding assistants with any self-hosted or cloud GitLab instance.
 
-It is designed for local use with Docker and exposes the server over MCP stdio through a single launcher script.
+## Capabilities
 
-## Why This Exists
+- **Projects & Issues** — list, search, create, update, labels, members, bundles.
+- **Merge Requests** — metadata, diffs, discussions, approvals, merge, rebase.
+- **MR Review Workflows** — draft notes, auto-resolved diff comments, review digests, suggested replies, bulk replies/resolves.
+- **CI/CD** — pipelines, jobs, artifacts, variables, environments, failed-job analysis.
+- **Repository** — file tree, raw content, batch commits, branches, tags, blame.
+- **Search** — code search, global search, user search.
+- **Security** — vulnerability findings, dependencies (SBOM), audit events.
+- **Local AI (Ollama)** — triage job logs, summarize discussions, check MR privacy, triage issues — all processed locally.
 
-Most coding agents are strong at reasoning over code but weak at navigating the operational side of a software project unless they have direct integrations. `Gitlab_AI_MCP` closes that gap by giving an agent structured access to the parts of GitLab that matter during real engineering work:
+## 🚀 Quick Start
 
-- code review
-- issue triage
-- pipeline debugging
-- repository inspection
-- project metadata and collaboration workflows
-
-## What You Can Do With It
-
-After setup, an MCP client can use this server to:
-
-- list and inspect GitLab projects
-- read, update, and comment on issues
-- inspect merge requests, diffs, approvals, notes, and discussions
-- reply to MR threads and manage review workflows
-- browse repository files, commits, blame data, and raw file content
-- inspect pipelines, jobs, logs, environments, variables, and artifacts
-- run local AI-assisted job log triage with Ollama
-
-## Typical Workflows
-
-### 1. Review a Merge Request
-
-Use your MCP client to:
-
-- fetch MR details
-- inspect diffs and discussions
-- identify blockers or regressions
-- reply to review threads
-- summarize merge readiness
-
-### 2. Debug a Failed Pipeline
-
-Use your MCP client to:
-
-- inspect the pipeline
-- list jobs
-- read failing logs
-- extract artifacts
-- triage the failure locally with Ollama
-
-### 3. Work With a Repository Without Leaving the Agent
-
-Use your MCP client to:
-
-- list repository files
-- read a config or source file
-- inspect blame and commit history
-- create or update files through GitLab APIs when appropriate
-
-## Requirements
-
-You need:
-
+### Prerequisites
 - Docker and Docker Compose
-- a GitLab Personal Access Token
-- one MCP-capable client such as Codex CLI, Claude Code, or Gemini CLI
+- A GitLab Personal Access Token with `api` scope
 
-Python 3.12+ is only needed if you want to run or test the project outside Docker.
-
-## GitLab Token Guidance
-
-Use a dedicated GitLab token for this integration where possible.
-
-Recommended approach:
-
-- create a token specifically for `Gitlab_AI_MCP`
-- grant the smallest scope that supports your workflows
-- avoid reusing a broad personal admin token unless you truly need it
-
-Minimum scope depends on what you want the agent to do:
-
-- read-only repository and MR inspection: a read-focused token is usually enough
-- commenting, updating issues, approving or managing MR discussions: write API access is required
-- pipeline control, variables, and environment management: broader API permissions may be required
-
-If you are unsure, start with the smallest workable scope and expand only when a real workflow needs it.
-
-## Quick Start
-
-1. Create a local environment file:
+### 1. Clone and configure
 
 ```bash
+git clone https://github.com/Wafiy-Firdaus/Gitlab_AI_MCP.git
+cd Gitlab_AI_MCP
 cp .env.example .env
 ```
 
-2. Edit `.env` and set your GitLab connection:
+Edit `.env` and set your values:
 
-```bash
+```env
 GITLAB_URL=https://gitlab.example.com
 GITLAB_TOKEN=glpat-your-token
 ```
 
-3. Start the local stack:
+### 2. Start the stack
 
+Choose the setup that matches your machine:
+
+**Option A — Core only** (no local AI, works on any machine):
 ```bash
 docker compose up -d --build
 ```
 
-This starts:
-
-- `gitlab-ai-mcp`: the MCP server runtime
-- `ollama`: optional local LLM service used only for local AI-assisted triage tools
-- `ollama-pull`: helper container that pre-pulls the local model used by those optional triage tools
-
-4. Register the MCP server in your client using the shared launcher:
-
+**Option B — With local AI, CPU** (Ollama runs on CPU, no GPU required):
 ```bash
-scripts/run_mcp.sh
+docker compose --profile ollama up -d --build
 ```
 
-The launcher checks that Docker is available and that the `gitlab-ai-mcp` service is running, then executes:
+**Option C — With local AI, NVIDIA GPU** (fastest inference):
+```bash
+docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
 
+> **Note:** Options B and C auto-download the `llama3.1:8b` model (~4 GB) on first run.
+> Local AI features (`triage_job_log_locally`, `check_mr_privacy_locally`, etc.) return a
+> friendly error if Ollama is not running — the rest of the server works fine without it.
+
+### 3. Register with your AI CLI
+
+Replace `/path/to/Gitlab_AI_MCP` with your actual checkout path.
+
+**Claude Code:**
+```bash
+claude mcp add gitlab-ai-mcp -- /path/to/Gitlab_AI_MCP/scripts/run_codex_mcp.sh
+```
+
+**Codex CLI:**
+```bash
+codex mcp add gitlab-ai-mcp -- /path/to/Gitlab_AI_MCP/scripts/run_codex_mcp.sh
+```
+
+**Gemini CLI:**
+```bash
+gemini mcp add gitlab-ai-mcp -- /path/to/Gitlab_AI_MCP/scripts/run_codex_mcp.sh
+```
+
+**Kimi Code CLI:**
+```bash
+kimi mcp add gitlab-ai-mcp -- /path/to/Gitlab_AI_MCP/scripts/run_codex_mcp.sh
+```
+
+The launcher script executes:
 ```bash
 docker compose exec -T gitlab-ai-mcp python server.py
 ```
 
-## Client Setup
+## ⚙️ Configuration
 
-### Codex CLI
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GITLAB_URL` | Yes | — | Base URL of your GitLab instance |
+| `GITLAB_TOKEN` | Yes | — | Personal Access Token (`api` scope) |
+| `DEBUG` | No | `false` | Enable verbose console logging |
+| `LOCAL_AI_URL` | No | `http://ollama:11434` | Ollama endpoint |
+| `LOCAL_AI_MODEL` | No | `llama3.1:8b` | Ollama model for local triage |
+| `GITLAB_MAX_RETRIES` | No | `3` | API retry attempts |
+| `GITLAB_RETRY_DELAY` | No | `1.0` | Base retry delay in seconds |
 
-```bash
-codex mcp add Gitlab_AI_MCP -- "$(pwd)/scripts/run_mcp.sh"
-```
+## 📝 MR Review Workflows
 
-### Claude Code
+### Draft-note flow (safe, human-in-the-loop)
+1. **Read** — `get_merge_request_diffs`, `get_review_digest`, `get_unresolved_discussion_digest`
+2. **Plan** — `get_draft_reply_plan`
+3. **Stage** — `create_draft_note` (provide `new_path` + `new_line`; SHAs auto-resolve)
+4. **Inspect** — `list_draft_notes`
+5. **Publish** — `publish_draft_notes` after human approval
 
-```bash
-claude mcp add Gitlab_AI_MCP -- "$(pwd)/scripts/run_mcp.sh"
-```
+### Simple diff comments
+`create_merge_request_discussion` and `create_draft_note` accept simple fields — no need to manually construct GitLab position objects:
+- `new_path` (required)
+- `old_path` (optional, defaults to `new_path`)
+- `new_line` / `old_line` (at least one required)
 
-### Gemini CLI
+### Bulk operations
+- `bulk_reply_to_discussions` — reply to many threads (per-item errors isolated)
+- `bulk_resolve_discussions` — resolve/reopen many threads (per-item errors isolated)
 
-```bash
-gemini mcp add Gitlab_AI_MCP -- "$(pwd)/scripts/run_mcp.sh"
-```
-
-If you prefer a static MCP config file, use `codex.mcp.toml.example` as a starting point.
-
-## First Use Demo
-
-Once your client is connected, a simple first session looks like this:
-
-1. Ask the agent to list your available GitLab projects.
-2. Ask it to open a specific merge request or issue.
-3. Ask it to summarize what changed.
-4. Ask it to inspect the pipeline or review discussions.
-5. Ask it to draft or post a reply.
-
-Example prompts:
-
-- `List my GitLab projects and identify the one most recently active.`
-- `Read merge request !42 in project group/project and summarize the risks.`
-- `Inspect the latest failed pipeline for group/project and tell me the root cause.`
-- `Open issue #17 in group/project and draft a concise update comment.`
-
-## Main Tool Areas
-
-This server is organized around a few high-value domains:
-
-- `projects`: project metadata, labels, members, and discovery
-- `issues`: issue details, notes, and updates
-- `merge_requests`: MR details, diffs, approvals, notes, discussions, and merge actions
-- `repository`: files, commits, blame, branches, raw content, and uploads
-- `ci_cd`: pipelines, jobs, logs, artifacts, variables, environments, retries, and controls
-- `search`: user lookup, code search, and global search
-
-## Running Checks
-
-Smoke check:
+## ✅ Testing
 
 ```bash
+# Run inside the container (any option A/B/C)
 docker compose exec gitlab-ai-mcp python run_tests.py
+
+# Run pytest suite on host (requires uv)
+uv run pytest tests/ -v
 ```
 
-Unit tests:
+## 📁 Project Structure
 
-```bash
-docker compose exec gitlab-ai-mcp pytest -q
 ```
-
-## Configuration
-
-The main environment variables are:
-
-- `GITLAB_URL`: base URL of your GitLab instance
-- `GITLAB_TOKEN`: GitLab Personal Access Token
-- `DEBUG`: enables console-friendly logging
-- `LOCAL_AI_URL`: Ollama base URL
-- `LOCAL_AI_MODEL`: model name used by optional local triage features
-
-Example values are included in `.env.example`.
-
-## Tested Usage
-
-This repository is structured so all supported clients use the same checked launcher and Docker runtime path:
-
-- Codex CLI via `mcp add`
-- Claude Code via `mcp add`
-- Gemini CLI via `mcp add`
-
-That matters because it keeps client setup consistent:
-
-- the same launcher is registered everywhere
-- the same Docker service is used everywhere
-- the same MCP server process is exposed everywhere
-
-In practice, this reduces client-specific drift and makes debugging setup problems much easier.
-
-## Project Layout
-
-- `server.py`: MCP entrypoint and prompt registration
-- `config.py`: environment-backed settings
-- `gitlab/`: async GitLab client and models
-- `services/`: business logic and response shaping
-- `tools/`: FastMCP tool definitions
-- `scripts/run_mcp.sh`: shared launcher for Codex, Claude Code, and Gemini CLI
-- `docker-compose.yml`: local runtime stack
-- `run_tests.py`: smoke test for registration and wiring
-- `tests/`: lightweight unit tests
-
-## Troubleshooting
-
-### `gitlab-ai-mcp container is not running`
-
-Start the stack first:
-
-```bash
-docker compose up -d --build
+server.py           — MCP entrypoint
+config.py           — Settings (pydantic-settings, reads .env)
+gitlab/client.py    — Async HTTP/2 GitLab API client (singleton, retry logic)
+services/
+  gitlab_service.py — Business logic; AI-friendly response formatting
+  local_ai_service.py — Ollama integration
+  review_digest.py  — Pure MR discussion digest helpers
+tools/              — MCP tool definitions (one file per domain)
+tests/              — Pytest unit tests
+scripts/run_codex_mcp.sh — Launcher used by all AI CLIs
+docker-compose.yml        — Base stack (core server, Ollama optional via --profile ollama)
+docker-compose.gpu.yml    — NVIDIA GPU override (stack with --profile ollama)
 ```
-
-### GitLab requests fail with authentication errors
-
-Check that:
-
-- `GITLAB_URL` is correct
-- `GITLAB_TOKEN` is valid
-- the token has enough scope for the action you are trying to perform
-
-### Docker is installed but the launcher still fails
-
-Make sure Docker is running and that `docker compose` works from the project directory.
-
-### Ollama is unavailable
-
-Most GitLab tools still work without Ollama. Only the optional local AI-assisted triage features depend on it.
-
-### Push, merge, or variable-management actions fail
-
-That usually means the token scope is too narrow or the GitLab account lacks permission in the target project.
-
-## Security Notes
-
-- keep `.env` local and never commit tokens
-- use least-privilege GitLab tokens where possible
-- use a dedicated token for this integration if you can
-- upload fetching prefers authenticated headers and only falls back to query-string token auth when a GitLab web route rejects header-based auth
-- Ollama is optional and is only relevant for local AI-assisted triage features
-
-## Summary
-
-If you want one GitLab MCP server that works the same way for Codex CLI, Claude Code, and Gemini CLI, this project is built for that exact use case.

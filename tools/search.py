@@ -27,11 +27,12 @@ def register_search_tools(mcp: FastMCP):
         return await service.search_code(project_id, search)
 
     @mcp.tool()
-    async def global_search(scope: str, search: str) -> dict[str, Any]:
+    async def global_search(scope: str, search: str, group_id: int | str | None = None) -> dict[str, Any]:
         """
         Global search across GitLab.
         Scope can be: 'projects', 'issues', 'merge_requests', 'milestones', 'users'.
+        Optional 'group_id' or 'group_path' to restrict results to a specific group/namespace.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.global_search(scope, search)
+        return await service.global_search(scope, search, group_id=group_id)

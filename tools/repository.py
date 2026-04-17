@@ -17,13 +17,24 @@ def register_repository_tools(mcp: FastMCP):
         return await service.list_repository_files(project_id, path=path, ref=ref)
 
     @mcp.tool()
-    async def get_file_content(project_id: int | str, file_path: str, ref: str = "main") -> dict[str, Any]:
+    async def get_file_content(project_id: int | str, file_path: str, ref: str = "main", include_raw: bool = False) -> dict[str, Any]:
         """
         Read the content of a file. Automatically decodes Base64 content.
+        Set 'include_raw' to True to include the original base64 content in metadata.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.get_file_content(project_id, file_path, ref=ref)
+        return await service.get_file_content(project_id, file_path, ref=ref, include_raw=include_raw)
+
+    @mcp.tool()
+    async def get_multiple_files(project_id: int | str, file_paths: list[str], ref: str = "main", include_metadata: bool = False) -> dict[str, Any]:
+        """
+        Fetch multiple files from a project in a single parallel request.
+        Set 'include_metadata' to True to include original Base64 content in metadata.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.get_multiple_files(project_id, file_paths, ref=ref, include_metadata=include_metadata)
 
     @mcp.tool()
     async def create_branch(project_id: int | str, branch: str, ref: str = "main") -> dict[str, Any]:
@@ -34,6 +45,37 @@ def register_repository_tools(mcp: FastMCP):
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         return await service.create_branch(project_id, branch, ref)
+
+    @mcp.tool()
+    async def get_branch(project_id: int | str, branch: str) -> dict[str, Any]:
+        """
+        Get details of a specific branch, including its HEAD commit SHA.
+        Useful for pinning Terraform modules or other dependencies to a specific commit.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.get_branch(project_id, branch)
+
+    @mcp.tool()
+    async def get_branches(project_id: int | str, branches: list[str]) -> dict[str, Any]:
+        """
+        Fetch details for multiple branches in parallel.
+        Useful for gathering HEAD SHAs for multiple repositories at once.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.get_branches(project_id, branches)
+
+    @mcp.tool()
+    async def list_repository_tags(project_id: int | str, limit: int = 50) -> dict[str, Any]:
+        """
+        List all tags in the repository.
+        Useful for identifying stable releases or semantic version tags.
+        'limit' restricts the number of tags returned (default: 50).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.list_repository_tags(project_id, limit=limit)
 
     @mcp.tool()
     async def create_repository_file(project_id: int | str, file_path: str, branch: str, content: str, commit_message: str) -> dict[str, Any]:
@@ -97,15 +139,21 @@ def register_repository_tools(mcp: FastMCP):
         return await service.get_file_blame(project_id, file_path, ref)
 
     @mcp.tool()
-    async def get_raw_file_content(raw_url: str) -> dict[str, Any]:
+    async def get_raw_file_content(
+        project_id: int | str | None = None, 
+        file_path: str | None = None, 
+        ref: str = "main", 
+        raw_url: str | None = None
+    ) -> dict[str, Any]:
         """
-        Fetch the raw text content of a file using a GitLab /-/raw/ URL.
-        Example: https://gitlab.example.com/group/project/-/raw/main/path/to/file.sh
-        Accepts a full URL or a path relative to the GitLab root.
+        Fetch the raw text content of a file from GitLab.
+        You can provide either:
+        1. 'raw_url': A full GitLab /-/raw/ URL.
+        2. 'project_id' + 'file_path' (+ optional 'ref'): For structured API access.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.get_raw_file_content(raw_url)
+        return await service.get_raw_file_content(project_id, file_path, ref, raw_url)
 
     @mcp.tool()
     async def fetch_gitlab_upload(upload_url: str) -> dict[str, Any]:

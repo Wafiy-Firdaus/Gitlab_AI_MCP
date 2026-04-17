@@ -18,17 +18,47 @@ def register_project_tools(mcp: FastMCP):
         return await service.get_current_user()
 
     @mcp.tool()
-    async def list_projects(search: str | None = None) -> dict[str, Any]:
+    async def ping_gitlab() -> dict[str, Any]:
         """
-        List all projects accessible to the user.
-        Optional 'search' parameter to filter by name.
+        Check connectivity to the GitLab instance.
+        Returns basic system status and current user info if successful.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.list_projects(search=search)
+        return await service.get_current_user()
 
     @mcp.tool()
-    async def get_project_details(project_id: int) -> dict[str, Any]:
+    async def list_projects(
+        search: str | None = None, 
+        group_id: int | str | None = None, 
+        fields: list[str] | None = None,
+        limit: int = 20
+    ) -> dict[str, Any]:
+        """
+        List all projects accessible to the user.
+        Optional 'search' parameter to filter by name.
+        Optional 'group_id' or 'group_path' to filter by group.
+        'fields' is an optional list of fields to include (default: id, name, path, default_branch).
+        'limit' restricts the number of projects returned (default: 20).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.list_projects(search=search, group_id=group_id, fields=fields, limit=limit)
+
+    @mcp.tool()
+    async def list_group_projects(group_id: int | str, fields: list[str] | None = None, limit: int = 20) -> dict[str, Any]:
+        """
+        List all projects within a specific group.
+        'group_id' can be the group's numeric ID or its full path (e.g., 'group/subgroup').
+        'fields' is an optional list of fields to include (default: id, name, path, default_branch).
+        'limit' is an optional parameter to restrict the number of projects returned (default: 20).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.list_group_projects(group_id, fields=fields, limit=limit)
+
+    @mcp.tool()
+    async def get_project_details(project_id: int | str) -> dict[str, Any]:
         """
         Get metadata for a specific project.
         """
@@ -37,7 +67,7 @@ def register_project_tools(mcp: FastMCP):
         return await service.get_project_details(project_id)
 
     @mcp.tool()
-    async def list_project_issues(project_id: int, state: str = "opened") -> dict[str, Any]:
+    async def list_project_issues(project_id: int | str, state: str = "opened") -> dict[str, Any]:
         """
         List issues for a project. 'state' can be 'opened' or 'closed'.
         """
@@ -46,7 +76,7 @@ def register_project_tools(mcp: FastMCP):
         return await service.list_project_issues(project_id, state=state)
 
     @mcp.tool()
-    async def list_project_merge_requests(project_id: int, state: str = "opened") -> dict[str, Any]:
+    async def list_project_merge_requests(project_id: int | str, state: str = "opened") -> dict[str, Any]:
         """
         List merge requests for a project. 'state' can be 'opened', 'closed', or 'merged'.
         """
@@ -80,3 +110,14 @@ def register_project_tools(mcp: FastMCP):
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         return await service.list_project_members(project_id, query)
+
+    @mcp.tool()
+    async def bundle_project_intelligence(project_id: int | str) -> dict[str, Any]:
+        """
+        High-performance tool that bundles project details, recent pipelines, 
+        open MRs, and open issues to provide a high-level dashboard.
+        Saves tokens by providing a compact, summarized context in one call.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.bundle_project_intelligence(project_id)
