@@ -22,6 +22,9 @@ A high-performance, containerized [Model Context Protocol (MCP)](https://modelco
 - Docker and Docker Compose v2
 - A GitLab [Personal Access Token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html) with `api` scope
 
+> **WSL2 (Windows users):** Install [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/) with the WSL2 backend enabled — this is the easiest path.
+> All commands below are run inside your WSL2 terminal.
+
 ### 1. Clone and configure
 
 ```bash
@@ -61,11 +64,15 @@ docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml 
 
 Skip this section if you don't have an NVIDIA GPU — Option B works fine on CPU.
 
+---
+
+**🐧 Native Linux**
+
 **Step 1 — Verify your NVIDIA drivers are installed:**
 ```bash
 nvidia-smi
 ```
-You should see your GPU listed. If not, install the drivers for your OS first:
+You should see your GPU listed. If not, install the drivers for your distro first:
 [NVIDIA Driver Downloads](https://www.nvidia.com/en-us/drivers/)
 
 **Step 2 — Install NVIDIA Container Toolkit (Ubuntu/Debian):**
@@ -80,7 +87,7 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
 sudo apt update && sudo apt install -y nvidia-container-toolkit
 ```
 
-For other Linux distros, see the [official install guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+For other distros, see the [official install guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
 **Step 3 — Configure Docker and verify:**
 ```bash
@@ -92,6 +99,59 @@ docker run --rm --gpus all ubuntu nvidia-smi
 ```
 
 **Step 4 — Start the stack:**
+```bash
+docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
+---
+
+**🪟 WSL2 (Windows)**
+
+WSL2 uses the NVIDIA drivers installed on **Windows** — you do not install GPU drivers inside WSL.
+
+**Step 1 — Install NVIDIA drivers on Windows (if not already installed):**
+
+Download and install from [NVIDIA Driver Downloads](https://www.nvidia.com/en-us/drivers/).
+Reboot Windows after installing.
+
+**Step 2 — Verify GPU is visible inside WSL2:**
+```bash
+nvidia-smi
+```
+If this works, your GPU is available in WSL2. If not, make sure you have WSL2 (not WSL1):
+```bash
+wsl --set-default-version 2
+```
+
+**Step 3 — Install NVIDIA Container Toolkit inside WSL2:**
+```bash
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+  | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+sudo apt update && sudo apt install -y nvidia-container-toolkit
+```
+
+**Step 4 — Configure Docker:**
+
+If using **Docker Desktop for Windows** (recommended):
+- Open Docker Desktop → Settings → Resources → **GPU** → enable your GPU → Apply & Restart
+
+If using **Docker Engine directly in WSL2**:
+```bash
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo service docker restart   # WSL2 uses service, not systemctl
+```
+
+**Step 5 — Verify Docker can see your GPU:**
+```bash
+docker run --rm --gpus all ubuntu nvidia-smi
+```
+
+**Step 6 — Start the stack:**
 ```bash
 docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
@@ -114,6 +174,9 @@ First, get your checkout path:
 ```bash
 pwd   # run this inside the Gitlab_AI_MCP directory
 ```
+
+> **WSL2 users:** Use the Linux path shown by `pwd` (e.g. `/home/yourname/Gitlab_AI_MCP`), not the Windows path.
+> Your AI CLI must be running inside the same WSL2 terminal for this path to work.
 
 Then register using that path:
 
@@ -172,8 +235,22 @@ docker compose logs gitlab-ai-ollama-pull
 ```
 
 **GPU not detected (Option C):**
-- Run `nvidia-smi` on the host — if this fails, your drivers are not installed
+- Run `nvidia-smi` — if this fails, your drivers are not installed
 - Run `docker run --rm --gpus all ubuntu nvidia-smi` — if this fails, the Container Toolkit is not configured
+
+**WSL2 — `nvidia-smi` not found inside WSL:**
+- Make sure you are on WSL2, not WSL1: run `wsl --list --verbose` in PowerShell and check the VERSION column
+- Install NVIDIA drivers on **Windows** (not inside WSL) and reboot
+
+**WSL2 — `systemctl: command not found`:**
+- WSL2 does not use systemd by default — use `sudo service docker restart` instead
+- Or enable systemd in WSL2: add `[boot] systemd=true` to `/etc/wsl.conf`, then restart WSL (`wsl --shutdown` in PowerShell)
+
+**WSL2 — Docker Desktop GPU toggle missing:**
+- Requires Docker Desktop 4.17 or later and WSL2 backend — update Docker Desktop if the GPU option is not visible
+
+**WSL2 — `docker compose` not found:**
+- Docker Desktop installs Compose automatically — open Docker Desktop and ensure it is running before using the WSL2 terminal
 
 ---
 
