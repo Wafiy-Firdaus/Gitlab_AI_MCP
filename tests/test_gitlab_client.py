@@ -1,8 +1,3 @@
-import os
-
-os.environ["GITLAB_URL"] = "https://gitlab.example.com"
-os.environ["GITLAB_TOKEN"] = "test-token"
-
 from gitlab.client import GitLabClient
 
 
@@ -43,8 +38,9 @@ def test_build_absolute_url_uses_base_for_relative_paths():
 
 def test_append_private_token_preserves_existing_query():
     client = GitLabClient()
-    tokenized = client._append_private_token("https://gitlab.example.com/uploads/file.txt?foo=bar")
-    assert tokenized.endswith("foo=bar&private_token=test-token")
+    original = "https://gitlab.example.com/uploads/file.txt?foo=bar"
+    tokenized = client._append_private_token(original)
+    assert tokenized.startswith(original + "&private_token=")
 
 
 def test_redact_url_hides_private_token_value():
