@@ -25,58 +25,87 @@ A high-performance, containerized [Model Context Protocol (MCP)](https://modelco
 > **WSL2 (Windows users):** Install [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/) with the WSL2 backend enabled — this is the easiest path.
 > All commands below are run inside your WSL2 terminal.
 
-### 1. Clone and configure
+### 1. Install
+
+**Option A — One-liner (fastest)**
+
+Paste this into your terminal. It clones to `~/.gitlab-ai-mcp`, then runs the interactive installer:
 
 ```bash
-git clone https://github.com/Wafiy-Firdaus/Gitlab_AI_MCP.git
-cd Gitlab_AI_MCP
-cp .env.example .env
+curl -fsSL https://raw.githubusercontent.com/Wafiy-Firdaus/Gitlab_AI_MCP/main/scripts/quick-install.sh | bash
 ```
 
-Edit `.env`:
+> **Want a different location?** Clone manually and run `./scripts/install.sh` instead.
 
-```env
-GITLAB_URL=https://gitlab.example.com   # your GitLab instance URL
-GITLAB_TOKEN=glpat-your-token           # your Personal Access Token
-```
+**Option B — Clone + install (recommended if you prefer transparency)**
 
-### 2. Choose your setup and start
-
-**Option A — Core only** *(recommended to start — no local AI, works on any machine):*
 ```bash
+git clone https://github.com/Wafiy-Firdaus/Gitlab_AI_MCP.git ~/.gitlab-ai-mcp
+cd ~/.gitlab-ai-mcp
+./scripts/install.sh
+```
+
+> **Already have a token ready?** Skip the prompt:
+> ```bash
+> ./scripts/install.sh --gitlab-url https://gitlab.example.com --gitlab-token glpat-your-token
+> ```
+
+**Option C — Manual install**
+
+If you prefer to run the steps yourself, or want to use the pre-built image from GitHub Container Registry:
+
+```bash
+# Pull pre-built image (no local build needed)
+docker pull ghcr.io/wafiy-firdaus/gitlab-ai-mcp:latest
+docker compose up -d
+
+# Or build locally
 docker compose up -d --build
 ```
 
-**Option B — With local AI on CPU** *(Ollama runs on CPU, ~4 GB model download on first run):*
+For Ollama (local AI):
 ```bash
+# CPU
 docker compose --profile ollama up -d --build
-```
 
-**Option C — With local AI on NVIDIA GPU** *(fastest inference — requires extra setup below):*
-```bash
+# GPU (see setup below)
 docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
-> Options B and C enable extra AI features: log triage, privacy scanning, discussion summarisation.
+Then register manually with your AI CLI:
+
+```bash
+# Kimi
+kimi mcp add --transport stdio gitlab-ai-mcp -- $(pwd)/scripts/run_mcp.sh
+
+# Claude
+claude mcp add --scope user gitlab-ai-mcp -- $(pwd)/scripts/run_mcp.sh
+
+# Codex
+codex mcp add gitlab-ai-mcp -- $(pwd)/scripts/run_mcp.sh
+
+# Gemini
+gemini mcp add gitlab-ai-mcp -- $(pwd)/scripts/run_mcp.sh
+```
+
+Or copy a template from [`mcp-configs/`](./mcp-configs/) to your global config location.
+
+> Options with Ollama enable extra AI features: log triage, privacy scanning, discussion summarisation.  
 > If Ollama is not running, these features return a clear error — all other features work normally.
-
-#### Setting up NVIDIA GPU (Option C only)
-
-Skip this section if you don't have an NVIDIA GPU — Option B works fine on CPU.
 
 ---
 
+#### Setting up NVIDIA GPU (Option C only)
+
+Skip this section if you don't have an NVIDIA GPU — the CPU option works fine.
+
 **🐧 Native Linux**
 
-**Step 1 — Verify your NVIDIA drivers are installed:**
 ```bash
+# 1. Verify GPU drivers
 nvidia-smi
-```
-You should see your GPU listed. If not, install the drivers for your distro first:
-[NVIDIA Driver Downloads](https://www.nvidia.com/en-us/drivers/)
 
-**Step 2 — Install NVIDIA Container Toolkit (Ubuntu/Debian):**
-```bash
+# 2. Install NVIDIA Container Toolkit (Ubuntu/Debian)
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
   | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 
@@ -85,78 +114,30 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
   | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
 sudo apt update && sudo apt install -y nvidia-container-toolkit
+
+# 3. Configure Docker
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+
+# 4. Verify
+docker run --rm --gpus all ubuntu nvidia-smi
 ```
 
 For other distros, see the [official install guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
-**Step 3 — Configure Docker and verify:**
-```bash
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
+**🪟 WSL2 (Windows)**
 
-# Confirm Docker can see your GPU
-docker run --rm --gpus all ubuntu nvidia-smi
-```
+WSL2 uses the NVIDIA drivers installed on **Windows** — do not install GPU drivers inside WSL.
 
-**Step 4 — Start the stack:**
-```bash
-docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
-```
+1. Install [NVIDIA drivers on Windows](https://www.nvidia.com/en-us/drivers/) and reboot.
+2. Verify inside WSL2: `nvidia-smi`
+3. Install NVIDIA Container Toolkit inside WSL2 (same commands as Native Linux step 2 above).
+4. Configure Docker Desktop → Settings → Resources → **GPU** → enable → Apply & Restart.
+5. Verify: `docker run --rm --gpus all ubuntu nvidia-smi`
 
 ---
 
-**🪟 WSL2 (Windows)**
-
-WSL2 uses the NVIDIA drivers installed on **Windows** — you do not install GPU drivers inside WSL.
-
-**Step 1 — Install NVIDIA drivers on Windows (if not already installed):**
-
-Download and install from [NVIDIA Driver Downloads](https://www.nvidia.com/en-us/drivers/).
-Reboot Windows after installing.
-
-**Step 2 — Verify GPU is visible inside WSL2:**
-```bash
-nvidia-smi
-```
-If this works, your GPU is available in WSL2. If not, make sure you have WSL2 (not WSL1):
-```bash
-wsl --set-default-version 2
-```
-
-**Step 3 — Install NVIDIA Container Toolkit inside WSL2:**
-```bash
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
-  | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
-  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
-  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-
-sudo apt update && sudo apt install -y nvidia-container-toolkit
-```
-
-**Step 4 — Configure Docker:**
-
-If using **Docker Desktop for Windows** (recommended):
-- Open Docker Desktop → Settings → Resources → **GPU** → enable your GPU → Apply & Restart
-
-If using **Docker Engine directly in WSL2**:
-```bash
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo service docker restart   # WSL2 uses service, not systemctl
-```
-
-**Step 5 — Verify Docker can see your GPU:**
-```bash
-docker run --rm --gpus all ubuntu nvidia-smi
-```
-
-**Step 6 — Start the stack:**
-```bash
-docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
-```
-
-### 3. Verify the server is running
+### 3. Verify
 
 ```bash
 docker compose ps
@@ -168,37 +149,25 @@ You should see `gitlab-ai-mcp` with status `Up`. Test it directly:
 docker compose exec gitlab-ai-mcp python run_tests.py
 ```
 
-### 4. Register with your AI CLI
+Then open any project in your AI CLI and check that the server is connected:
 
-First, get your checkout path:
-```bash
-pwd   # run this inside the Gitlab_AI_MCP directory
-```
+| AI CLI | Command |
+|--------|---------|
+| Kimi | `kimi mcp list` or `/mcp` inside the shell |
+| Claude | `claude mcp list` or `/mcp` inside the shell |
+| Codex | `codex mcp list` |
+| Gemini | `gemini mcp list` or `/mcp` inside the shell |
 
-> **WSL2 users:** Use the Linux path shown by `pwd` (e.g. `/home/yourname/Gitlab_AI_MCP`), not the Windows path.
-> Your AI CLI must be running inside the same WSL2 terminal for this path to work.
+---
 
-Then register using that path:
+## 🌍 Global vs Local Configuration
 
-**Claude Code:**
-```bash
-claude mcp add gitlab-ai-mcp -- /your/path/to/Gitlab_AI_MCP/scripts/run_codex_mcp.sh
-```
+This project is designed to be registered as a **global** MCP server so it is available in every project you open with your AI CLI.
 
-**Codex CLI:**
-```bash
-codex mcp add gitlab-ai-mcp -- /your/path/to/Gitlab_AI_MCP/scripts/run_codex_mcp.sh
-```
+- **Global configs** live in your home directory (e.g. `~/.kimi/mcp.json`, `~/.codex/config.toml`) and apply everywhere.
+- **Local configs** (e.g. `.claude/settings.local.json`, `.gemini/settings.json` inside a project repo) only apply when you are inside that specific directory.
 
-**Gemini CLI:**
-```bash
-gemini mcp add gitlab-ai-mcp -- /your/path/to/Gitlab_AI_MCP/scripts/run_codex_mcp.sh
-```
-
-**Kimi Code CLI:**
-```bash
-kimi mcp add gitlab-ai-mcp -- /your/path/to/Gitlab_AI_MCP/scripts/run_codex_mcp.sh
-```
+The `scripts/run_mcp.sh` launcher is path-agnostic — it automatically finds the project directory regardless of where your AI CLI invokes it — so global registration works correctly.
 
 ---
 
@@ -219,6 +188,26 @@ All settings go in your `.env` file:
 ---
 
 ## 🔧 Troubleshooting
+
+**Check status:**
+```bash
+./scripts/status.sh
+```
+
+**View logs:**
+```bash
+./scripts/logs.sh
+```
+
+**Update to latest version:**
+```bash
+./scripts/update.sh
+```
+
+**Uninstall:**
+```bash
+./scripts/uninstall.sh
+```
 
 **Container won't start:**
 ```bash
@@ -266,7 +255,15 @@ services/
   review_digest.py         — MR discussion digest helpers
 tools/                     — MCP tool definitions (one file per domain)
 tests/                     — Unit tests
-scripts/run_codex_mcp.sh   — Launcher used by all AI CLIs
+scripts/
+  quick-install.sh         — One-liner entrypoint (clone + run install.sh)
+  install.sh               — Interactive installer (validates token, builds, registers)
+  update.sh                — Pull latest code, rebuild container, keep .env backup
+  status.sh                — Container health, GitLab connectivity, AI CLI registrations
+  logs.sh                  — Tail container logs
+  uninstall.sh             — Clean removal (stop container + unregister)
+  run_mcp.sh               — Launcher script used by all AI CLIs
+mcp-configs/               — Global MCP config templates (Kimi, Claude, Codex, Gemini)
 docker-compose.yml         — Base stack
 docker-compose.gpu.yml     — NVIDIA GPU override (use with --profile ollama)
 ```

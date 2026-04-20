@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gitlab-ai-mcp": {
+      "command": "/ABSOLUTE/PATH/TO/Gitlab_AI_MCP/scripts/run_mcp.sh",
+      "args": []
+    }
+  }
+}

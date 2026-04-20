@@ -58,8 +58,7 @@ tools/             — One file per domain; each registers handlers with mcp via
   ci_cd.py  issues.py  merge_requests.py  projects.py  repository.py  search.py  security.py
 tests/             — pytest unit tests (no network required)
 scripts/
-  run_mcp.sh        — Launcher used by AI CLIs; proxies stdin/stdout into the running container
-  run_codex_mcp.sh  — Alias used when registering with Claude/Codex/Gemini/Kimi
+  run_mcp.sh        — Launcher script used by all AI CLIs; proxies stdin/stdout into the running container
 ```
 
 ### Key design decisions

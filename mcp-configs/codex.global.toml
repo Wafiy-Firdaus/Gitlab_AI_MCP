@@ -1,0 +1,7 @@
+# Codex CLI global MCP config.
+# Copy this file to ~/.codex/config.toml (merge with existing config) and update the command path.
+# Docs: https://developers.openai.com/codex/config-basic
+
+[mcp_servers.gitlab-ai-mcp]
+command = "/ABSOLUTE/PATH/TO/Gitlab_AI_MCP/scripts/run_mcp.sh"
+args = []
