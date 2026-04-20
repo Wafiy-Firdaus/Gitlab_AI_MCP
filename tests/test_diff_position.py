@@ -1,5 +1,5 @@
+
 import pytest
-from unittest.mock import AsyncMock
 
 from gitlab.client import GitLabClient
 
@@ -20,9 +20,7 @@ async def test_build_text_diff_position_success(client, monkeypatch):
 
     monkeypatch.setattr(GitLabClient, "get_latest_merge_request_version", mock_version)
 
-    position = await client.build_text_diff_position(
-        "group/project", 1, "src/main.py", new_line=10
-    )
+    position = await client.build_text_diff_position("group/project", 1, "src/main.py", new_line=10)
     assert position["position_type"] == "text"
     assert position["base_sha"] == "base123"
     assert position["start_sha"] == "start123"

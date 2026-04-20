@@ -14,15 +14,14 @@ class Settings(BaseSettings):
     gitlab_max_retries: int = Field(3, alias="GITLAB_MAX_RETRIES")
     gitlab_retry_delay: float = Field(1.0, alias="GITLAB_RETRY_DELAY")
     debug: bool = Field(False, alias="DEBUG")
-    
+
     # Local AI Settings (Ollama)
     local_ai_url: str = Field("http://localhost:11434", alias="LOCAL_AI_URL")
     local_ai_model: str = Field("llama3.1:8b", alias="LOCAL_AI_MODEL")
-    
+
     model_config = SettingsConfigDict(
-        env_file=str(DEFAULT_ENV_FILE),
-        env_file_encoding="utf-8",
-        extra="ignore"
+        env_file=str(DEFAULT_ENV_FILE), env_file_encoding="utf-8", extra="ignore"
     )
 
-settings = Settings()
+
+settings = Settings()  # type: ignore[call-arg]

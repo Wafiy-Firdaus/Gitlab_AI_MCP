@@ -19,9 +19,13 @@ structlog.configure(
         structlog.processors.add_log_level,
         structlog.processors.StackInfoRenderer(),
         structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.JSONRenderer() if not settings.debug else structlog.processors.ConsoleRenderer(),
+        structlog.processors.JSONRenderer()
+        if not settings.debug
+        else structlog.dev.ConsoleRenderer(),
     ],
-    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO if not settings.debug else logging.DEBUG),
+    wrapper_class=structlog.make_filtering_bound_logger(
+        logging.INFO if not settings.debug else logging.DEBUG
+    ),
     context_class=dict,
     logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
     cache_logger_on_first_use=True,
@@ -30,8 +34,7 @@ logger = structlog.get_logger(__name__)
 
 # Initialize FastMCP server
 mcp = FastMCP(
-    "Git2u GitLab MCP",
-    dependencies=["httpx", "pydantic", "pydantic-settings", "structlog"]
+    "Git2u GitLab MCP", dependencies=["httpx", "pydantic", "pydantic-settings", "structlog"]
 )
 
 # Register tools from various modules
@@ -43,6 +46,7 @@ register_repository_tools(mcp)
 register_ci_cd_tools(mcp)
 register_security_tools(mcp)
 
+
 # MCP Prompt Templates
 @mcp.prompt()
 def review_mr(project_id: str, mr_iid: str) -> str:
@@ -51,7 +55,7 @@ def review_mr(project_id: str, mr_iid: str) -> str:
     """
     p_id = str(project_id).strip().rstrip(",")
     m_iid = str(mr_iid).strip().rstrip(",")
-    
+
     return f"""You are a senior staff engineer performing an exhaustive review of Merge Request !{m_iid} in project {p_id}.
     
 Goal: Ensure code quality, security, and architectural alignment while providing actionable feedback.
@@ -68,6 +72,7 @@ Recommended Workflow:
 
 Execute step 1 now."""
 
+
 @mcp.prompt()
 def debug_job(project_id: str, job_id: str) -> str:
     """
@@ -75,7 +80,7 @@ def debug_job(project_id: str, job_id: str) -> str:
     """
     p_id = str(project_id).strip().rstrip(",")
     j_id = str(job_id).strip().rstrip(",")
-    
+
     return f"""You are a DevOps expert debugging a failed pipeline job (ID: {j_id}) in project {p_id}.
     
 Goal: Identify the root cause and provide a clear path to resolution.
@@ -89,9 +94,11 @@ Recommended Workflow:
 
 Start by analyzing the failed job log."""
 
+
 def main():
     """Main entrypoint for the high-performance MCP server."""
     mcp.run()
+
 
 if __name__ == "__main__":
     main()

@@ -9,10 +9,10 @@ from services.gitlab_service import GitLabService
 def register_merge_request_tools(mcp: FastMCP):
     @mcp.tool()
     async def get_merge_request_details(
-        project_id: int | str | None = None, 
+        project_id: int | str | None = None,
         mr_iid: int | None = None,
         url: str | None = None,
-        include_jobs: bool = False
+        include_jobs: bool = False,
     ) -> dict[str, Any]:
         """
         Get detailed information about a merge request.
@@ -36,7 +36,7 @@ def register_merge_request_tools(mcp: FastMCP):
         assignee_id: int | None = None,
         reviewer_ids: list[int] | None = None,
         labels: str | None = None,
-        remove_source_branch: bool = True
+        remove_source_branch: bool = True,
     ) -> dict[str, Any]:
         """
         Create a new merge request.
@@ -53,13 +53,13 @@ def register_merge_request_tools(mcp: FastMCP):
             assignee_id=assignee_id,
             reviewer_ids=reviewer_ids,
             labels=labels,
-            remove_source_branch=remove_source_branch
+            remove_source_branch=remove_source_branch,
         )
 
     @mcp.tool()
     async def update_merge_request(
-        project_id: int | str, 
-        mr_iid: int, 
+        project_id: int | str,
+        mr_iid: int,
         title: str | None = None,
         description: str | None = None,
         labels: str | None = None,
@@ -67,7 +67,7 @@ def register_merge_request_tools(mcp: FastMCP):
         reviewer_ids: list[int] | None = None,
         milestone_id: int | None = None,
         state_event: str | None = None,
-        target_branch: str | None = None
+        target_branch: str | None = None,
     ) -> dict[str, Any]:
         """
         Update an existing merge request.
@@ -77,8 +77,8 @@ def register_merge_request_tools(mcp: FastMCP):
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         return await service.update_merge_request(
-            project_id, 
-            mr_iid, 
+            project_id,
+            mr_iid,
             title=title,
             description=description,
             labels=labels,
@@ -86,7 +86,7 @@ def register_merge_request_tools(mcp: FastMCP):
             reviewer_ids=reviewer_ids,
             milestone_id=milestone_id,
             state_event=state_event,
-            target_branch=target_branch
+            target_branch=target_branch,
         )
 
     @mcp.tool()
@@ -100,9 +100,7 @@ def register_merge_request_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def get_merge_request_notes(
-        project_id: int | str | None = None, 
-        mr_iid: int | None = None,
-        url: str | None = None
+        project_id: int | str | None = None, mr_iid: int | None = None, url: str | None = None
     ) -> dict[str, Any]:
         """
         List comments and discussions for a merge request.
@@ -111,10 +109,15 @@ def register_merge_request_tools(mcp: FastMCP):
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
+        if p_id is None or m_iid is None:
+            return {"error": "Missing project_id/mr_iid or valid URL"}
+        assert p_id is not None and m_iid is not None
         return await service.list_merge_request_notes(p_id, m_iid)
 
     @mcp.tool()
-    async def create_merge_request_note(project_id: int | str, mr_iid: int, body: str) -> dict[str, Any]:
+    async def create_merge_request_note(
+        project_id: int | str, mr_iid: int, body: str
+    ) -> dict[str, Any]:
         """
         Post a new comment to a merge request.
         """
@@ -123,7 +126,9 @@ def register_merge_request_tools(mcp: FastMCP):
         return await service.create_merge_request_note(project_id, mr_iid, body)
 
     @mcp.tool()
-    async def update_merge_request_note(project_id: int | str, mr_iid: int, note_id: int, body: str) -> dict[str, Any]:
+    async def update_merge_request_note(
+        project_id: int | str, mr_iid: int, note_id: int, body: str
+    ) -> dict[str, Any]:
         """
         Update an existing comment on a merge request.
         """
@@ -132,7 +137,9 @@ def register_merge_request_tools(mcp: FastMCP):
         return await service.update_note(project_id, "merge_requests", mr_iid, note_id, body)
 
     @mcp.tool()
-    async def delete_merge_request_note(project_id: int | str, mr_iid: int, note_id: int) -> dict[str, Any]:
+    async def delete_merge_request_note(
+        project_id: int | str, mr_iid: int, note_id: int
+    ) -> dict[str, Any]:
         """
         Delete a comment from a merge request.
         """
@@ -142,10 +149,10 @@ def register_merge_request_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def get_merge_request_diffs(
-        project_id: int | str | None = None, 
+        project_id: int | str | None = None,
         mr_iid: int | None = None,
         url: str | None = None,
-        paths: list[str] | None = None
+        paths: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         View code changes (diffs) for a merge request.
@@ -155,14 +162,17 @@ def register_merge_request_tools(mcp: FastMCP):
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
+        if p_id is None or m_iid is None:
+            return {"error": "Missing project_id/mr_iid or valid URL"}
+        assert p_id is not None and m_iid is not None
         return await service.get_merge_request_diffs(p_id, m_iid, paths=paths)
 
     @mcp.tool()
     async def get_merge_request_discussions(
-        project_id: int | str, 
-        mr_iid: int, 
-        unresolved_only: bool = False, 
-        include_system: bool = True
+        project_id: int | str,
+        mr_iid: int,
+        unresolved_only: bool = False,
+        include_system: bool = True,
     ) -> dict[str, Any]:
         """
         List all discussions (threads) for a merge request.
@@ -171,10 +181,14 @@ def register_merge_request_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.list_merge_request_discussions(project_id, mr_iid, unresolved_only, include_system)
+        return await service.list_merge_request_discussions(
+            project_id, mr_iid, unresolved_only, include_system
+        )
 
     @mcp.tool()
-    async def list_merge_request_discussion_summaries(project_id: int | str, mr_iid: int, unresolved_only: bool = False) -> dict[str, Any]:
+    async def list_merge_request_discussion_summaries(
+        project_id: int | str, mr_iid: int, unresolved_only: bool = False
+    ) -> dict[str, Any]:
         """
         Get a lightweight summary of all discussions in an MR.
         Returns ID, author, first line, resolution status, and note count for each thread.
@@ -183,17 +197,23 @@ def register_merge_request_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.list_merge_request_discussion_summaries(project_id, mr_iid, unresolved_only)
+        return await service.list_merge_request_discussion_summaries(
+            project_id, mr_iid, unresolved_only
+        )
 
     @mcp.tool()
-    async def reply_to_discussion(project_id: int | str, mr_iid: int, discussion_id: str, body: str) -> dict[str, Any]:
+    async def reply_to_discussion(
+        project_id: int | str, mr_iid: int, discussion_id: str, body: str
+    ) -> dict[str, Any]:
         """
         Reply to an existing discussion thread on a merge request.
         Requires only the 'discussion_id' (e.g., from list_merge_request_discussion_summaries).
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.add_merge_request_discussion_note(project_id, mr_iid, discussion_id, body)
+        return await service.add_merge_request_discussion_note(
+            project_id, mr_iid, discussion_id, body
+        )
 
     @mcp.tool()
     async def create_merge_request_discussion(
@@ -216,12 +236,21 @@ def register_merge_request_tools(mcp: FastMCP):
         resolved_position = position
         if position is None and new_path:
             resolved_position = await client.build_text_diff_position(
-                project_id, mr_iid, new_path, old_path=old_path, new_line=new_line, old_line=old_line
+                project_id,
+                mr_iid,
+                new_path,
+                old_path=old_path,
+                new_line=new_line,
+                old_line=old_line,
             )
-        return await service.create_merge_request_discussion(project_id, mr_iid, body, resolved_position)
+        return await service.create_merge_request_discussion(
+            project_id, mr_iid, body, resolved_position
+        )
 
     @mcp.tool()
-    async def get_latest_merge_request_version(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+    async def get_latest_merge_request_version(
+        project_id: int | str, mr_iid: int
+    ) -> dict[str, Any]:
         """
         [Read] Latest MR version SHAs (diff comments).
         """
@@ -292,7 +321,9 @@ def register_merge_request_tools(mcp: FastMCP):
         return await service.get_review_summary(project_id, mr_iid)
 
     @mcp.tool()
-    async def get_unresolved_discussion_digest(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+    async def get_unresolved_discussion_digest(
+        project_id: int | str, mr_iid: int
+    ) -> dict[str, Any]:
         """
         [Read] Unresolved threads: compact + theme hint.
         """
@@ -357,7 +388,12 @@ def register_merge_request_tools(mcp: FastMCP):
         resolved_position = position
         if position is None and new_path:
             resolved_position = await client.build_text_diff_position(
-                project_id, mr_iid, new_path, old_path=old_path, new_line=new_line, old_line=old_line
+                project_id,
+                mr_iid,
+                new_path,
+                old_path=old_path,
+                new_line=new_line,
+                old_line=old_line,
             )
         return await service.create_merge_request_draft_note(
             project_id,
@@ -369,7 +405,9 @@ def register_merge_request_tools(mcp: FastMCP):
         )
 
     @mcp.tool()
-    async def delete_draft_note(project_id: int | str, mr_iid: int, draft_note_id: int) -> dict[str, Any]:
+    async def delete_draft_note(
+        project_id: int | str, mr_iid: int, draft_note_id: int
+    ) -> dict[str, Any]:
         """
         [Stage] Remove one draft note.
         """
@@ -421,14 +459,18 @@ def register_merge_request_tools(mcp: FastMCP):
         return await service.list_merge_request_pipelines(project_id, mr_iid)
 
     @mcp.tool()
-    async def resolve_discussion(project_id: int | str, mr_iid: int, discussion_id: str, resolved: bool = True) -> dict[str, Any]:
+    async def resolve_discussion(
+        project_id: int | str, mr_iid: int, discussion_id: str, resolved: bool = True
+    ) -> dict[str, Any]:
         """
         Mark a discussion thread as resolved or unresolved.
         Requires only the 'discussion_id' (no note_id needed).
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.resolve_merge_request_discussion(project_id, mr_iid, discussion_id, resolved)
+        return await service.resolve_merge_request_discussion(
+            project_id, mr_iid, discussion_id, resolved
+        )
 
     @mcp.tool()
     async def bundle_merge_request_context(project_id: int | str, mr_iid: int) -> dict[str, Any]:
@@ -442,13 +484,13 @@ def register_merge_request_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def merge_merge_request(
-        project_id: int | str, 
+        project_id: int | str,
         mr_iid: int,
         merge_commit_message: str | None = None,
         squash_commit_message: str | None = None,
         squash: bool = False,
         should_remove_source_branch: bool = True,
-        merge_when_pipeline_succeeds: bool = False
+        merge_when_pipeline_succeeds: bool = False,
     ) -> dict[str, Any]:
         """
         [PHASE 3.1] Merge an existing merge request.
@@ -457,13 +499,13 @@ def register_merge_request_tools(mcp: FastMCP):
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         return await service.merge_merge_request(
-            project_id, 
+            project_id,
             mr_iid,
             merge_commit_message=merge_commit_message,
             squash_commit_message=squash_commit_message,
             squash=squash,
             should_remove_source_branch=should_remove_source_branch,
-            merge_when_pipeline_succeeds=merge_when_pipeline_succeeds
+            merge_when_pipeline_succeeds=merge_when_pipeline_succeeds,
         )
 
     @mcp.tool()
@@ -486,9 +528,7 @@ def register_merge_request_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def summarize_mr_discussions_locally(
-        project_id: int | str | None = None,
-        mr_iid: int | None = None,
-        url: str | None = None
+        project_id: int | str | None = None, mr_iid: int | None = None, url: str | None = None
     ) -> dict[str, Any]:
         """
         Use local AI (Ollama) to summarize all reviewer discussions and highlights in an MR.
@@ -498,13 +538,14 @@ def register_merge_request_tools(mcp: FastMCP):
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
+        if p_id is None or m_iid is None:
+            return {"error": "Missing project_id/mr_iid or valid URL"}
+        assert p_id is not None and m_iid is not None
         return await service.summarize_mr_discussions_locally(p_id, m_iid)
 
     @mcp.tool()
     async def check_mr_privacy_locally(
-        project_id: int | str | None = None,
-        mr_iid: int | None = None,
-        url: str | None = None
+        project_id: int | str | None = None, mr_iid: int | None = None, url: str | None = None
     ) -> dict[str, Any]:
         """
         Use local AI (Ollama) to scan MR diffs and description for leaked secrets before merging.
@@ -515,4 +556,7 @@ def register_merge_request_tools(mcp: FastMCP):
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
         p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
+        if p_id is None or m_iid is None:
+            return {"error": "Missing project_id/mr_iid or valid URL"}
+        assert p_id is not None and m_iid is not None
         return await service.check_mr_privacy_locally(p_id, m_iid)

@@ -16,6 +16,7 @@ class GitLabProject(BaseModel):
     ssh_url_to_repo: str | None = None
     http_url_to_repo: str | None = None
 
+
 class GitLabIssue(BaseModel):
     id: int
     iid: int
@@ -29,6 +30,7 @@ class GitLabIssue(BaseModel):
     labels: list[str] = []
     author: dict[str, Any]
     assignee: dict[str, Any] | None = None
+
 
 class GitLabMergeRequest(BaseModel):
     id: int

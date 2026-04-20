@@ -1,4 +1,3 @@
-import pytest
 
 from services.review_digest import (
     build_draft_reply_plan,
@@ -6,8 +5,8 @@ from services.review_digest import (
     build_review_summary,
     build_suggested_replies,
     build_unresolved_discussion_digest,
-    infer_summary_hint,
     infer_suggested_reply,
+    infer_summary_hint,
     normalize_discussion,
     normalize_discussion_note,
     normalize_draft_note,
@@ -64,9 +63,33 @@ def test_normalize_discussion():
 
 def test_build_review_summary():
     discussions = [
-        {"discussion_id": "d1", "individual_note": False, "note_count": 2, "unresolved": True, "resolvable": True, "file_path": "src/a.py", "notes": []},
-        {"discussion_id": "d2", "individual_note": True, "note_count": 1, "unresolved": False, "resolvable": True, "file_path": "src/a.py", "notes": []},
-        {"discussion_id": "d3", "individual_note": False, "note_count": 1, "unresolved": True, "resolvable": True, "file_path": "src/b.py", "notes": []},
+        {
+            "discussion_id": "d1",
+            "individual_note": False,
+            "note_count": 2,
+            "unresolved": True,
+            "resolvable": True,
+            "file_path": "src/a.py",
+            "notes": [],
+        },
+        {
+            "discussion_id": "d2",
+            "individual_note": True,
+            "note_count": 1,
+            "unresolved": False,
+            "resolvable": True,
+            "file_path": "src/a.py",
+            "notes": [],
+        },
+        {
+            "discussion_id": "d3",
+            "individual_note": False,
+            "note_count": 1,
+            "unresolved": True,
+            "resolvable": True,
+            "file_path": "src/b.py",
+            "notes": [],
+        },
     ]
     summary = build_review_summary(discussions)
     assert summary["total_discussions"] == 3
@@ -88,7 +111,13 @@ def test_build_unresolved_discussion_digest():
             "resolvable": True,
             "file_path": "src/a.py",
             "notes": [
-                {"body": "null pointer risk", "system": False, "author_name": "Alice", "author_username": "alice", "created_at": "2024-01-01T00:00:00Z"}
+                {
+                    "body": "null pointer risk",
+                    "system": False,
+                    "author_name": "Alice",
+                    "author_username": "alice",
+                    "created_at": "2024-01-01T00:00:00Z",
+                }
             ],
         },
         {
@@ -98,7 +127,15 @@ def test_build_unresolved_discussion_digest():
             "unresolved": False,
             "resolvable": True,
             "file_path": "src/b.py",
-            "notes": [{"body": "ok", "system": False, "author_name": "Bob", "author_username": "bob", "created_at": "2024-01-01T00:00:00Z"}],
+            "notes": [
+                {
+                    "body": "ok",
+                    "system": False,
+                    "author_name": "Bob",
+                    "author_username": "bob",
+                    "created_at": "2024-01-01T00:00:00Z",
+                }
+            ],
         },
     ]
     items = build_unresolved_discussion_digest(discussions)
@@ -117,13 +154,22 @@ def test_build_suggested_replies():
             "resolvable": True,
             "file_path": "src/a.py",
             "notes": [
-                {"body": "missing tests", "system": False, "author_name": "Alice", "author_username": "alice", "created_at": "2024-01-01T00:00:00Z"}
+                {
+                    "body": "missing tests",
+                    "system": False,
+                    "author_name": "Alice",
+                    "author_username": "alice",
+                    "created_at": "2024-01-01T00:00:00Z",
+                }
             ],
         },
     ]
     replies = build_suggested_replies(discussions)
     assert len(replies) == 1
-    assert "test coverage" in replies[0]["suggested_reply"].lower() or "Addressed" in replies[0]["suggested_reply"]
+    assert (
+        "test coverage" in replies[0]["suggested_reply"].lower()
+        or "Addressed" in replies[0]["suggested_reply"]
+    )
 
 
 def test_build_review_digest():
@@ -136,7 +182,13 @@ def test_build_review_digest():
             "resolvable": True,
             "file_path": "src/a.py",
             "notes": [
-                {"body": "style issue", "system": False, "author_name": "Alice", "author_username": "alice", "created_at": "2024-01-01T00:00:00Z"}
+                {
+                    "body": "style issue",
+                    "system": False,
+                    "author_name": "Alice",
+                    "author_username": "alice",
+                    "created_at": "2024-01-01T00:00:00Z",
+                }
             ],
         },
     ]
@@ -156,7 +208,13 @@ def test_build_draft_reply_plan():
             "resolvable": True,
             "file_path": "MR_GENERAL",
             "notes": [
-                {"body": "general feedback", "system": False, "author_name": "Alice", "author_username": "alice", "created_at": "2024-01-01T00:00:00Z"}
+                {
+                    "body": "general feedback",
+                    "system": False,
+                    "author_name": "Alice",
+                    "author_username": "alice",
+                    "created_at": "2024-01-01T00:00:00Z",
+                }
             ],
         },
         {
@@ -167,7 +225,13 @@ def test_build_draft_reply_plan():
             "resolvable": True,
             "file_path": "src/a.py",
             "notes": [
-                {"body": "nit", "system": False, "author_name": "Bob", "author_username": "bob", "created_at": "2024-01-01T00:00:00Z"}
+                {
+                    "body": "nit",
+                    "system": False,
+                    "author_name": "Bob",
+                    "author_username": "bob",
+                    "created_at": "2024-01-01T00:00:00Z",
+                }
             ],
         },
     ]

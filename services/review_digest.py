@@ -79,11 +79,15 @@ def build_review_summary(discussions: list[dict[str, Any]]) -> dict[str, Any]:
             cur["unresolved_count"] += 1
         by_file_map[key] = cur
 
-    by_file = [
-        {"file_path": fp, "discussion_count": v["discussion_count"], "unresolved_count": v["unresolved_count"]}
+    by_file: list[dict[str, Any]] = [
+        {
+            "file_path": fp,
+            "discussion_count": v["discussion_count"],
+            "unresolved_count": v["unresolved_count"],
+        }
         for fp, v in by_file_map.items()
     ]
-    by_file.sort(key=lambda x: (-x["unresolved_count"], x["file_path"]))
+    by_file.sort(key=lambda x: (-int(x["unresolved_count"]), str(x["file_path"])))
 
     return {
         "total_discussions": total_discussions,
@@ -111,11 +115,29 @@ def infer_summary_hint(text: str) -> str:
     t = text.lower()
     if any(k in t for k in ("null", "undefined", "nil", "empty check", "npe")):
         return "null handling"
-    if any(k in t for k in ("test", "tests", "testing", "coverage", "testcase", "jest", "mocha", "pytest")):
+    if any(
+        k in t
+        for k in ("test", "tests", "testing", "coverage", "testcase", "jest", "mocha", "pytest")
+    ):
         return "test coverage"
-    if any(k in t for k in ("rename", "naming", "clarity", "readable", "readability", "confusing", "unclear")):
+    if any(
+        k in t
+        for k in ("rename", "naming", "clarity", "readable", "readability", "confusing", "unclear")
+    ):
         return "naming/clarity"
-    if any(k in t for k in ("performance", "slow", "latency", "query", "n+1", "n + 1", "optimize", "optimization")):
+    if any(
+        k in t
+        for k in (
+            "performance",
+            "slow",
+            "latency",
+            "query",
+            "n+1",
+            "n + 1",
+            "optimize",
+            "optimization",
+        )
+    ):
         return "logic risk"
     if any(k in t for k in ("style", "lint", "format", "nit", "nitpick", "whitespace", "typo")):
         return "style/nit"
@@ -126,11 +148,29 @@ def infer_suggested_reply(text: str) -> str:
     t = text.lower()
     if any(k in t for k in ("null", "undefined", "nil", "empty check", "npe")):
         return "Good catch. I'll add appropriate guards for null/empty cases and push an update."
-    if any(k in t for k in ("test", "tests", "testing", "coverage", "testcase", "jest", "mocha", "pytest")):
+    if any(
+        k in t
+        for k in ("test", "tests", "testing", "coverage", "testcase", "jest", "mocha", "pytest")
+    ):
         return "Addressed in latest update. Added guard and test coverage."
-    if any(k in t for k in ("rename", "naming", "clarity", "readable", "readability", "confusing", "unclear")):
+    if any(
+        k in t
+        for k in ("rename", "naming", "clarity", "readable", "readability", "confusing", "unclear")
+    ):
         return "Good catch. I'll align this implementation for clarity and consistency."
-    if any(k in t for k in ("performance", "slow", "latency", "query", "n+1", "n + 1", "optimize", "optimization")):
+    if any(
+        k in t
+        for k in (
+            "performance",
+            "slow",
+            "latency",
+            "query",
+            "n+1",
+            "n + 1",
+            "optimize",
+            "optimization",
+        )
+    ):
         return "Thanks — I'll review performance here and optimize or document the tradeoff in the next commit."
     if any(k in t for k in ("style", "lint", "format", "nit", "nitpick", "whitespace", "typo")):
         return "Thanks, I'll clean this up and push a small follow-up commit."
@@ -192,17 +232,20 @@ def build_unresolved_discussion_digest(discussions: list[dict[str, Any]]) -> lis
             continue
         latest = get_latest_discussion_note(d)
         hint_source = _thread_text_for_hints(d) or (latest["body"] if latest else "")
-        items.append({
-            "discussion_id": d["discussion_id"],
-            "file_path": _safe_file_path(d),
-            "latest_note_body": latest["body"] if latest else "",
-            "latest_note_author": (latest["author_name"] if latest else "") or (latest["author_username"] if latest else ""),
-            "latest_note_created_at": latest["created_at"] if latest else "",
-            "unresolved": d["unresolved"],
-            "resolvable": d["resolvable"],
-            "note_count": d["note_count"],
-            "summary_hint": infer_summary_hint(hint_source),
-        })
+        items.append(
+            {
+                "discussion_id": d["discussion_id"],
+                "file_path": _safe_file_path(d),
+                "latest_note_body": latest["body"] if latest else "",
+                "latest_note_author": (latest["author_name"] if latest else "")
+                or (latest["author_username"] if latest else ""),
+                "latest_note_created_at": latest["created_at"] if latest else "",
+                "unresolved": d["unresolved"],
+                "resolvable": d["resolvable"],
+                "note_count": d["note_count"],
+                "summary_hint": infer_summary_hint(hint_source),
+            }
+        )
     return items
 
 
@@ -213,11 +256,13 @@ def build_suggested_replies(discussions: list[dict[str, Any]]) -> list[dict[str,
             continue
         latest = get_latest_discussion_note(d)
         text = _thread_text_for_hints(d) or (latest["body"] if latest else "")
-        out.append({
-            "discussion_id": d["discussion_id"],
-            "file_path": _safe_file_path(d),
-            "suggested_reply": infer_suggested_reply(text),
-        })
+        out.append(
+            {
+                "discussion_id": d["discussion_id"],
+                "file_path": _safe_file_path(d),
+                "suggested_reply": infer_suggested_reply(text),
+            }
+        )
     return out
 
 
@@ -229,9 +274,7 @@ def build_review_digest(discussions: list[dict[str, Any]]) -> dict[str, Any]:
         "resolvable_discussions": summary["resolvable_discussions"],
         "individual_notes": summary["individual_notes"],
     }
-    top_files_with_unresolved = [
-        f for f in summary["by_file"] if f["unresolved_count"] > 0
-    ][:10]
+    top_files_with_unresolved = [f for f in summary["by_file"] if f["unresolved_count"] > 0][:10]
     return {
         "totals": totals,
         "top_files_with_unresolved": top_files_with_unresolved,
@@ -254,10 +297,12 @@ def build_draft_reply_plan(discussions: list[dict[str, Any]]) -> dict[str, Any]:
         if did in seen:
             continue
         seen.add(did)
-        items.append({
-            "discussion_id": did,
-            "file_path": fp,
-            "suggested_reply": infer_suggested_reply(text),
-            "target_mode": target_mode,
-        })
+        items.append(
+            {
+                "discussion_id": did,
+                "file_path": fp,
+                "suggested_reply": infer_suggested_reply(text),
+                "target_mode": target_mode,
+            }
+        )
     return {"total_items": len(items), "items": items}

@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -9,9 +9,9 @@ from services.gitlab_service import GitLabService
 def register_security_tools(mcp: FastMCP):
     @mcp.tool()
     async def list_vulnerability_findings(
-        project_id: int | str, 
-        severity: Optional[list[str]] = None, 
-        report_type: Optional[list[str]] = None
+        project_id: int | str,
+        severity: list[str] | None = None,
+        report_type: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         List vulnerability findings for a project (SAST, DAST, Secret Detection).
@@ -23,7 +23,9 @@ def register_security_tools(mcp: FastMCP):
         return await service.list_vulnerability_findings(project_id, severity, report_type)
 
     @mcp.tool()
-    async def get_vulnerability_details(project_id: int | str, vulnerability_id: int) -> dict[str, Any]:
+    async def get_vulnerability_details(
+        project_id: int | str, vulnerability_id: int
+    ) -> dict[str, Any]:
         """
         Get detailed information about a specific vulnerability.
         """

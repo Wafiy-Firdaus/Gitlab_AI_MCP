@@ -29,10 +29,10 @@ def register_project_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def list_projects(
-        search: str | None = None, 
-        group_id: int | str | None = None, 
+        search: str | None = None,
+        group_id: int | str | None = None,
         fields: list[str] | None = None,
-        limit: int = 20
+        limit: int = 20,
     ) -> dict[str, Any]:
         """
         List all projects accessible to the user.
@@ -43,10 +43,14 @@ def register_project_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.list_projects(search=search, group_id=group_id, fields=fields, limit=limit)
+        return await service.list_projects(
+            search=search, group_id=group_id, fields=fields, limit=limit
+        )
 
     @mcp.tool()
-    async def list_group_projects(group_id: int | str, fields: list[str] | None = None, limit: int = 20) -> dict[str, Any]:
+    async def list_group_projects(
+        group_id: int | str, fields: list[str] | None = None, limit: int = 20
+    ) -> dict[str, Any]:
         """
         List all projects within a specific group.
         'group_id' can be the group's numeric ID or its full path (e.g., 'group/subgroup').
@@ -76,7 +80,9 @@ def register_project_tools(mcp: FastMCP):
         return await service.list_project_issues(project_id, state=state)
 
     @mcp.tool()
-    async def list_project_merge_requests(project_id: int | str, state: str = "opened") -> dict[str, Any]:
+    async def list_project_merge_requests(
+        project_id: int | str, state: str = "opened"
+    ) -> dict[str, Any]:
         """
         List merge requests for a project. 'state' can be 'opened', 'closed', or 'merged'.
         """
@@ -94,7 +100,9 @@ def register_project_tools(mcp: FastMCP):
         return await service.list_project_labels(project_id)
 
     @mcp.tool()
-    async def create_project_label(project_id: int | str, name: str, color: str, description: str | None = None) -> dict[str, Any]:
+    async def create_project_label(
+        project_id: int | str, name: str, color: str, description: str | None = None
+    ) -> dict[str, Any]:
         """
         Create a new label for a project.
         """
@@ -103,7 +111,9 @@ def register_project_tools(mcp: FastMCP):
         return await service.create_project_label(project_id, name, color, description)
 
     @mcp.tool()
-    async def list_project_members(project_id: int | str, query: str | None = None) -> dict[str, Any]:
+    async def list_project_members(
+        project_id: int | str, query: str | None = None
+    ) -> dict[str, Any]:
         """
         List members of a project and their access levels.
         """
@@ -114,7 +124,7 @@ def register_project_tools(mcp: FastMCP):
     @mcp.tool()
     async def bundle_project_intelligence(project_id: int | str) -> dict[str, Any]:
         """
-        High-performance tool that bundles project details, recent pipelines, 
+        High-performance tool that bundles project details, recent pipelines,
         open MRs, and open issues to provide a high-level dashboard.
         Saves tokens by providing a compact, summarized context in one call.
         """

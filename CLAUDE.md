@@ -19,11 +19,18 @@ ruff check .
 ruff format --check .
 ```
 
+**Type check:**
+```bash
+mypy .
+```
+
 **Unit tests:**
 ```bash
 python -m pytest -q
 # single test file:
 python -m pytest tests/test_gitlab_client.py -v
+# single test by name:
+python -m pytest tests/test_review_digest.py -v -k "test_name"
 ```
 
 **Smoke test (checks tool/prompt registration, no live GitLab needed):**
@@ -58,7 +65,7 @@ tools/             — One file per domain; each registers handlers with mcp via
   ci_cd.py  issues.py  merge_requests.py  projects.py  repository.py  search.py  security.py
 tests/             — pytest unit tests (no network required)
 scripts/
-  run_mcp.sh        — Launcher script used by all AI CLIs; proxies stdin/stdout into the running container
+  run_mcp.sh        — Launcher used by all AI CLIs; checks .env exists, auto-starts the container, then exec's server.py
 ```
 
 ### Key design decisions
@@ -67,13 +74,24 @@ scripts/
 
 **Layered call path** — Tools call `GitLabService`, which calls `GitLabClient`. Tools must not call `GitLabClient` directly. This keeps response shaping in one place.
 
+**`GitLabService` per-call instantiation** — Tools always construct a fresh service per handler invocation:
+```python
+client = await GitLabClient.get_instance()
+service = GitLabService(client)
+```
+`GitLabService.__init__` also creates a `LocalAIService`, so do not hold service instances across calls.
+
+**URL or IDs** — Most tool handlers accept either a full GitLab URL or explicit `project_id` + resource IID. Use `service.resolve_url_or_ids(url, project_id, resource_id)` to normalize before calling service methods. `GitLabClient.parse_gitlab_url()` does the URL parsing; `parse_mr_diff_url()` handles diff anchor URLs.
+
 **Response contract** — Every `GitLabService` method returns `{summary: str, key_findings: list[str], details: dict, next_action: str}`. New service methods must follow this shape.
 
 **`project_id` encoding** — `GitLabClient._format_project_id()` URL-encodes `"group/subgroup/project"` path strings. All client methods accept `int | str` for project IDs.
 
-**Local AI is optional** — `LocalAIService` gracefully degrades: if Ollama is unreachable it returns an error string, so all other tools remain functional. `scrub_secrets()` runs on every payload before it reaches Ollama.
+**Local AI is optional** — `LocalAIService` gracefully degrades: if Ollama is unreachable it returns an error string, so all other tools remain functional. `scrub_secrets()` runs on every payload before it reaches Ollama (redacts IPs, GitLab tokens, AWS keys, generic password/secret assignments, and long hex strings).
 
 **Pagination** — Use `client.get_all()` for endpoints that paginate (follows `X-Next-Page`). Pass `limit=` to avoid fetching unbounded lists.
+
+**Test env bootstrap** — `tests/conftest.py` sets `GITLAB_URL` and `GITLAB_TOKEN` before any project import so the `Settings` singleton never reads a local `.env` during tests. Do not import `config` or tool modules at the top level of test files.
 
 ## Adding a new tool
 
@@ -85,12 +103,12 @@ scripts/
 
 ## Environment variables
 
-| Variable | Required | Default |
-|---|---|---|
-| `GITLAB_URL` | Yes | — |
-| `GITLAB_TOKEN` | Yes | — |
-| `DEBUG` | No | `false` |
-| `LOCAL_AI_URL` | No | `http://ollama:11434` |
-| `LOCAL_AI_MODEL` | No | `llama3.1:8b` |
-| `GITLAB_MAX_RETRIES` | No | `3` |
-| `GITLAB_RETRY_DELAY` | No | `1.0` |
+| Variable            | Required | Default                  |
+| ------------------- | -------- | ------------------------ |
+| `GITLAB_URL`        | Yes      | —                        |
+| `GITLAB_TOKEN`      | Yes      | —                        |
+| `DEBUG`             | No       | `false`                  |
+| `LOCAL_AI_URL`      | No       | `http://ollama:11434`    |
+| `LOCAL_AI_MODEL`    | No       | `llama3.1:8b`            |
+| `GITLAB_MAX_RETRIES`| No       | `3`                      |
+| `GITLAB_RETRY_DELAY`| No       | `1.0`                    |

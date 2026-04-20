@@ -13,7 +13,7 @@ from services.gitlab_service import GitLabService
 async def run_detailed_test():
     print("🔍 Starting Comprehensive Stability Test...")
     errors = []
-    
+
     # 1. Test Client Initialization (Singleton)
     try:
         print("Testing GitLabClient singleton...")
@@ -49,10 +49,10 @@ async def run_detailed_test():
             for tn in tool_names:
                 print(f"  - {tn}")
             expected_tools = [
-                'list_projects', 
-                'get_issue_details', 
-                'get_merge_request_details', 
-                'analyze_failed_job'
+                "list_projects",
+                "get_issue_details",
+                "get_merge_request_details",
+                "analyze_failed_job",
             ]
             for et in expected_tools:
                 if et not in tool_names:
@@ -84,6 +84,7 @@ async def run_detailed_test():
     # Cleanup
     if client:
         await client.aclose()
+
 
 if __name__ == "__main__":
     asyncio.run(run_detailed_test())

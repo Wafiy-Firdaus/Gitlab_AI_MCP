@@ -27,9 +27,7 @@ def register_ci_cd_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def trigger_pipeline(
-        project_id: int | str, 
-        ref: str, 
-        variables: list[dict[str, str]] | None = None
+        project_id: int | str, ref: str, variables: list[dict[str, str]] | None = None
     ) -> dict[str, Any]:
         """
         Trigger a new pipeline for a specific branch or tag.
@@ -59,9 +57,7 @@ def register_ci_cd_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def analyze_failed_job(
-        project_id: int | str | None = None, 
-        job_id: int | None = None,
-        url: str | None = None
+        project_id: int | str | None = None, job_id: int | None = None, url: str | None = None
     ) -> dict[str, Any]:
         """
         Specialized tool to analyze a failed job's log.
@@ -129,7 +125,9 @@ def register_ci_cd_tools(mcp: FastMCP):
         return await service.play_job(project_id, job_id)
 
     @mcp.tool()
-    async def get_job_artifact_file(project_id: int | str, job_id: int, artifact_path: str) -> dict[str, Any]:
+    async def get_job_artifact_file(
+        project_id: int | str, job_id: int, artifact_path: str
+    ) -> dict[str, Any]:
         """
         Read a specific file from a job's artifacts.
         """
@@ -176,12 +174,12 @@ def register_ci_cd_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def create_project_variable(
-        project_id: int | str, 
-        key: str, 
-        value: str, 
-        variable_type: str = "env_var", 
-        protected: bool = False, 
-        masked: bool = False
+        project_id: int | str,
+        key: str,
+        value: str,
+        variable_type: str = "env_var",
+        protected: bool = False,
+        masked: bool = False,
     ) -> dict[str, Any]:
         """
         Create a new CI/CD variable for a project.
@@ -189,23 +187,27 @@ def register_ci_cd_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.create_project_variable(project_id, key, value, variable_type, protected, masked)
+        return await service.create_project_variable(
+            project_id, key, value, variable_type, protected, masked
+        )
 
     @mcp.tool()
     async def update_project_variable(
-        project_id: int | str, 
-        key: str, 
-        value: str | None = None, 
-        variable_type: str | None = None, 
-        protected: bool | None = None, 
-        masked: bool | None = None
+        project_id: int | str,
+        key: str,
+        value: str | None = None,
+        variable_type: str | None = None,
+        protected: bool | None = None,
+        masked: bool | None = None,
     ) -> dict[str, Any]:
         """
         Update an existing CI/CD variable for a project.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.update_project_variable(project_id, key, value, variable_type, protected, masked)
+        return await service.update_project_variable(
+            project_id, key, value, variable_type, protected, masked
+        )
 
     @mcp.tool()
     async def delete_project_variable(project_id: int | str, key: str) -> dict[str, Any]:
