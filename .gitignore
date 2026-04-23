@@ -24,6 +24,7 @@ wheels/
 .coverage
 .cache/
 .mypy_cache/
+.ruff_cache/
 
 # Environment
 .env
@@ -36,6 +37,27 @@ ENV/
 .idea/
 *.swp
 *.swo
+*.swn
 
-# MCP
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# MCP / AI CLI local configs
 .mcp/
+.claude/
+
+# pyenv
+.python-version
+
+# Backup files
+*.bak
+*.tmp
+*~
+
+# Coverage HTML report
+htmlcov/
+coverage.xml
