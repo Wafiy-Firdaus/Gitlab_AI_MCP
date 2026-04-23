@@ -1,7 +1,5 @@
 """Tests for shared tool utilities."""
 
-import pytest
-
 from gitlab.client import GitLabClient
 from services.gitlab_service import GitLabService
 from tools._utils import resolve_ids_or_fail
