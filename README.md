@@ -13,6 +13,7 @@ A high-performance, containerized [Model Context Protocol (MCP)](https://modelco
 | **Search** | Code search, global search, user search |
 | **Security** | Vulnerability findings, dependency list (SBOM), audit events |
 | **Local AI** | Triage job logs, scan MR diffs for secrets, summarize discussions — all run locally via Ollama |
+| **Diagnostics** | Health-check connectivity, verify token permissions, report GitLab version |
 
 ---
 
@@ -243,18 +244,43 @@ docker compose logs gitlab-ai-ollama-pull
 
 ---
 
+## 🛠️ Development
+
+```bash
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run full check suite (lint + format + types + tests + smoke)
+make check
+
+# Run tests with coverage
+make coverage
+
+# See all available commands
+make help
+```
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for setup instructions, architecture overview, and PR guidelines.  
+See [`CHANGELOG.md`](./CHANGELOG.md) for release history.
+
+---
+
 ## 📁 Project Structure
 
 ```
 server.py                  — MCP server entrypoint
 config.py                  — Settings (reads from .env)
+_version.py                — Single source of truth for package version
 gitlab/client.py           — Async HTTP/2 GitLab API client
+gitlab/models.py           — Pydantic models for GitLab resources
 services/
   gitlab_service.py        — Business logic and response formatting
   local_ai_service.py      — Ollama integration for local AI features
   review_digest.py         — MR discussion digest helpers
 tools/                     — MCP tool definitions (one file per domain)
-tests/                     — Unit tests
+  _utils.py                — Shared helpers (URL resolution, error formatting)
+  exceptions.py            — Structured error types for tool handlers
+tests/                     — Unit tests (pytest, no network required)
 scripts/
   quick-install.sh         — One-liner entrypoint (clone + run install.sh)
   install.sh               — Interactive installer (validates token, builds, registers)
@@ -264,6 +290,12 @@ scripts/
   uninstall.sh             — Clean removal (stop container + unregister)
   run_mcp.sh               — Launcher script used by all AI CLIs
 mcp-configs/               — Global MCP config templates (Kimi, Claude, Codex, Gemini)
+.github/                   — Issue & PR templates, CI workflows
 docker-compose.yml         — Base stack
 docker-compose.gpu.yml     — NVIDIA GPU override (use with --profile ollama)
+Makefile                   — Common dev tasks (check, coverage, docker-build)
+.pre-commit-config.yaml    — Pre-commit hooks (ruff, mypy)
+CHANGELOG.md               — Release history
+CONTRIBUTING.md            — Contributor guide
+AGENTS.md                  — AI coding agent guidance
 ```
