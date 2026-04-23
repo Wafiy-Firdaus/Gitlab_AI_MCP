@@ -1200,7 +1200,7 @@ class GitLabService:
         ]
 
         # Construct a compact context for the AI
-        compact_context = {
+        compact_context: dict[str, Any] = {
             "mr_details": {
                 "iid": mr["iid"],
                 "title": mr["title"],
@@ -1827,7 +1827,7 @@ class GitLabService:
         ]
 
         # Construct a compact context for the AI
-        compact_context = {
+        compact_context: dict[str, Any] = {
             "issue_details": {
                 "iid": issue["iid"],
                 "title": issue["title"],

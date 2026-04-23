@@ -19,12 +19,21 @@ class GitLabClient:
         self.headers = {
             "PRIVATE-TOKEN": settings.gitlab_token,
             "Accept": "application/json",
-            "User-Agent": "Gitlab_AI_MCP/0.3.0",
+            "User-Agent": "Gitlab_AI_MCP/0.5.0",
         }
         self.client = httpx.AsyncClient(
             base_url=self.base_url,
             headers=self.headers,
             # Maximize handshake buffer for slow self-hosted instances
+            timeout=httpx.Timeout(60.0, connect=30.0),
+            follow_redirects=True,
+            http2=True,
+            limits=httpx.Limits(
+                max_keepalive_connections=20, max_connections=100, keepalive_expiry=60.0
+            ),
+        )
+        # Dedicated client for web routes (uploads, raw files) without PRIVATE-TOKEN header
+        self.web_client = httpx.AsyncClient(
             timeout=httpx.Timeout(60.0, connect=30.0),
             follow_redirects=True,
             http2=True,
@@ -58,12 +67,13 @@ class GitLabClient:
 
     async def aclose(self):
         await self.client.aclose()
+        await self.web_client.aclose()
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        await self.aclose()
 
     def _format_project_id(self, project_id: int | str) -> str:
         """Encodes project path if it's a string."""
@@ -87,7 +97,7 @@ class GitLabClient:
         """
         Parses a GitLab URL to extract project path, resource type, and ID.
         """
-        pattern = r"https?://[^/]+/(.*?)/-/(merge_requests|jobs|pipelines|issues|repository/files)/?([^?#]*)"
+        pattern = r"https?://[^/]+/(.*?)/-/(merge_requests|jobs|pipelines|issues|work_items|epics|snippets|blob|tree|commits|commit|repository/files)/?([^?#]*)"
         match = re.search(pattern, url)
 
         if not match:
@@ -231,7 +241,7 @@ class GitLabClient:
                             "rate_limit_exceeded",
                             attempt=attempt + 1,
                             wait_time=wait_time,
-                            endpoint=endpoint,
+                            endpoint=self._redact_url(endpoint),
                         )
                         await asyncio.sleep(wait_time)
                         continue
@@ -252,7 +262,7 @@ class GitLabClient:
                         status_code=e.response.status_code,
                         attempt=attempt + 1,
                         wait_time=wait_time,
-                        endpoint=endpoint,
+                        endpoint=self._redact_url(endpoint),
                     )
                     await asyncio.sleep(wait_time)
                     continue
@@ -260,7 +270,7 @@ class GitLabClient:
                 logger.error(
                     "gitlab_api_error",
                     status_code=e.response.status_code,
-                    endpoint=endpoint,
+                    endpoint=self._redact_url(endpoint),
                     error=e.response.text,
                 )
                 raise
@@ -272,16 +282,20 @@ class GitLabClient:
                         error=str(e),
                         attempt=attempt + 1,
                         wait_time=wait_time,
-                        endpoint=endpoint,
+                        endpoint=self._redact_url(endpoint),
                     )
                     await asyncio.sleep(wait_time)
                     continue
 
-                logger.error("gitlab_unexpected_error", endpoint=endpoint, error=str(e))
+                logger.error(
+                    "gitlab_unexpected_error", endpoint=self._redact_url(endpoint), error=str(e)
+                )
                 raise
 
         # This part should theoretically not be reached due to raises in the loop
-        raise Exception(f"Failed to request {endpoint} after {max_retries} retries")
+        raise Exception(
+            f"Failed to request {self._redact_url(endpoint)} after {max_retries} retries"
+        )
 
     async def get(self, endpoint: str, params: dict[str, Any] | None = None) -> Any:
         response = await self._request("GET", endpoint, params=params)
@@ -799,24 +813,25 @@ class GitLabClient:
         auth_url = self._append_private_token(upload_url)
 
         try:
-            response = await self._request("GET", auth_url)
+            # Use web_client (no PRIVATE-TOKEN header) so GitLab web-route auth isn't confused
+            response = await self.web_client.get(auth_url)
+            response.raise_for_status()
             return response.content, response.headers.get(
                 "content-type", "application/octet-stream"
             )
         except httpx.HTTPStatusError as e:
-            # If CDN redirect strips auth and returns 401/403, retry without auth header
+            # If CDN redirect strips auth and returns 401/403, retry without any auth
             if e.response.status_code in (401, 403):
                 logger.warning(
-                    "upload_header_auth_failed_falling_back_to_query_token",
+                    "upload_auth_failed_falling_back_to_anonymous",
                     url=self._redact_url(auth_url),
                     status_code=e.response.status_code,
                 )
-                async with httpx.AsyncClient(follow_redirects=True) as anon:
-                    response = await anon.get(upload_url)
-                    response.raise_for_status()
-                    return response.content, response.headers.get(
-                        "content-type", "application/octet-stream"
-                    )
+                response = await self.web_client.get(upload_url)
+                response.raise_for_status()
+                return response.content, response.headers.get(
+                    "content-type", "application/octet-stream"
+                )
             raise
 
     async def cancel_pipeline(self, project_id: int | str, pipeline_id: int) -> dict[str, Any]:

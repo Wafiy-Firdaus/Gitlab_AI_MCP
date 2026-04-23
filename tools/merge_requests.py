@@ -473,14 +473,21 @@ def register_merge_request_tools(mcp: FastMCP):
         )
 
     @mcp.tool()
-    async def bundle_merge_request_context(project_id: int | str, mr_iid: int) -> dict[str, Any]:
+    async def bundle_merge_request_context(
+        project_id: int | str | None = None,
+        mr_iid: int | None = None,
+        url: str | None = None,
+    ) -> dict[str, Any]:
         """
         [PHASE 1.2] High-performance tool that bundles MR details, discussions, and diffs.
         Saves tokens by providing a compact, summarized context in one call.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.bundle_merge_request_context(project_id, mr_iid)
+        p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
+        if p_id is None or m_iid is None:
+            return {"error": "Missing project_id/mr_iid or valid URL"}
+        return await service.bundle_merge_request_context(p_id, m_iid)
 
     @mcp.tool()
     async def merge_merge_request(

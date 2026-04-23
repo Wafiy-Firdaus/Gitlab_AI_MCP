@@ -1,4 +1,3 @@
-
 import pytest
 
 from gitlab.client import GitLabClient

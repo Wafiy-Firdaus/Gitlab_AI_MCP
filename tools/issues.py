@@ -134,14 +134,20 @@ def register_issue_tools(mcp: FastMCP):
         return await service.delete_note(project_id, "issues", issue_iid, note_id)
 
     @mcp.tool()
-    async def bundle_issue_context(project_id: int | str, issue_iid: int) -> dict[str, Any]:
+    async def bundle_issue_context(
+        project_id: int | str | None = None, issue_iid: int | None = None, url: str | None = None
+    ) -> dict[str, Any]:
         """
         High-performance tool that bundles issue details and notes.
         Saves tokens by providing a compact, summarized context in one call.
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        return await service.bundle_issue_context(project_id, issue_iid)
+        p_id, i_iid = service.resolve_url_or_ids(url, project_id, issue_iid)
+        if p_id is None or i_iid is None:
+            return {"error": "Missing project_id/issue_iid or valid URL"}
+        assert p_id is not None and i_iid is not None
+        return await service.bundle_issue_context(p_id, i_iid)
 
     @mcp.tool()
     async def triage_issue_locally(

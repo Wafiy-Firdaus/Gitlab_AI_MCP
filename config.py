@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # GitLab Settings
     gitlab_url: str = Field(..., alias="GITLAB_URL")
     gitlab_token: str = Field(..., alias="GITLAB_TOKEN")
+
     gitlab_max_retries: int = Field(3, alias="GITLAB_MAX_RETRIES")
     gitlab_retry_delay: float = Field(1.0, alias="GITLAB_RETRY_DELAY")
     debug: bool = Field(False, alias="DEBUG")
