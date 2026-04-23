@@ -4,6 +4,7 @@ from mcp.server.fastmcp import FastMCP
 
 from gitlab.client import GitLabClient
 from services.gitlab_service import GitLabService
+from tools._utils import resolve_ids_or_fail
 
 
 def register_issue_tools(mcp: FastMCP):
@@ -30,9 +31,10 @@ def register_issue_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, i_iid = service.resolve_url_or_ids(url, project_id, issue_iid)
-        if p_id is None or i_iid is None:
-            return {"error": "Missing project_id/issue_iid or valid URL"}
+        resolved = resolve_ids_or_fail(service, url, project_id, issue_iid, "issue_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, i_iid = resolved
         return await service.get_issue_details(p_id, i_iid)
 
     @mcp.tool()
@@ -96,10 +98,10 @@ def register_issue_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, i_iid = service.resolve_url_or_ids(url, project_id, issue_iid)
-        if p_id is None or i_iid is None:
-            return {"error": "Missing project_id/issue_iid or valid URL"}
-        assert p_id is not None and i_iid is not None
+        resolved = resolve_ids_or_fail(service, url, project_id, issue_iid, "issue_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, i_iid = resolved
         return await service.list_issue_notes(p_id, i_iid)
 
     @mcp.tool()
@@ -143,10 +145,10 @@ def register_issue_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, i_iid = service.resolve_url_or_ids(url, project_id, issue_iid)
-        if p_id is None or i_iid is None:
-            return {"error": "Missing project_id/issue_iid or valid URL"}
-        assert p_id is not None and i_iid is not None
+        resolved = resolve_ids_or_fail(service, url, project_id, issue_iid, "issue_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, i_iid = resolved
         return await service.bundle_issue_context(p_id, i_iid)
 
     @mcp.tool()
@@ -160,8 +162,8 @@ def register_issue_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, i_iid = service.resolve_url_or_ids(url, project_id, issue_iid)
-        if p_id is None or i_iid is None:
-            return {"error": "Missing project_id/issue_iid or valid URL"}
-        assert p_id is not None and i_iid is not None
+        resolved = resolve_ids_or_fail(service, url, project_id, issue_iid, "issue_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, i_iid = resolved
         return await service.triage_issue_locally(p_id, i_iid)

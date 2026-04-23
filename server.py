@@ -4,6 +4,7 @@ import sys
 import structlog
 from mcp.server.fastmcp import FastMCP
 
+from _version import __version__
 from config import settings
 from tools.ci_cd import register_ci_cd_tools
 from tools.issues import register_issue_tools
@@ -34,7 +35,8 @@ logger = structlog.get_logger(__name__)
 
 # Initialize FastMCP server
 mcp = FastMCP(
-    "Git2u GitLab MCP", dependencies=["httpx", "pydantic", "pydantic-settings", "structlog"]
+    f"Git2u GitLab MCP v{__version__}",
+    dependencies=["httpx", "pydantic", "pydantic-settings", "structlog"],
 )
 
 # Register tools from various modules

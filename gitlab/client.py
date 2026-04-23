@@ -6,6 +6,7 @@ from typing import Any, Optional
 import httpx
 import structlog
 
+from _version import __version__
 from config import settings
 
 logger = structlog.get_logger(__name__)
@@ -19,7 +20,7 @@ class GitLabClient:
         self.headers = {
             "PRIVATE-TOKEN": settings.gitlab_token,
             "Accept": "application/json",
-            "User-Agent": "Gitlab_AI_MCP/0.5.0",
+            "User-Agent": f"Gitlab_AI_MCP/{__version__}",
         }
         self.client = httpx.AsyncClient(
             base_url=self.base_url,

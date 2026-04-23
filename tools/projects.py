@@ -21,11 +21,35 @@ def register_project_tools(mcp: FastMCP):
     async def ping_gitlab() -> dict[str, Any]:
         """
         Check connectivity to the GitLab instance.
-        Returns basic system status and current user info if successful.
+        Returns basic system status, current user info, and GitLab version.
         """
         client = await GitLabClient.get_instance()
-        service = GitLabService(client)
-        return await service.get_current_user()
+
+        try:
+            user = await client.get_current_user()
+            version_resp = await client.client.get("/version")
+            version_data = version_resp.json()
+
+            return {
+                "summary": f"GitLab {version_data.get('version', 'unknown')} is reachable",
+                "key_findings": [
+                    f"Connected as: {user.get('name', 'unknown')} (@{user.get('username', 'unknown')})",
+                    f"GitLab version: {version_data.get('version', 'unknown')}",
+                    f"Revision: {version_data.get('revision', 'unknown')[:8]}",
+                ],
+                "details": {
+                    "user": user,
+                    "version": version_data,
+                },
+                "next_action": "Connection is healthy. You can start using other tools.",
+            }
+        except Exception as exc:
+            return {
+                "summary": "GitLab connection failed",
+                "key_findings": [str(exc)],
+                "details": {"error": str(exc)},
+                "next_action": "Check GITLAB_URL and GITLAB_TOKEN in your .env file.",
+            }
 
     @mcp.tool()
     async def list_projects(

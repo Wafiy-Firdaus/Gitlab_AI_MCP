@@ -4,6 +4,7 @@ from mcp.server.fastmcp import FastMCP
 
 from gitlab.client import GitLabClient
 from services.gitlab_service import GitLabService
+from tools._utils import resolve_ids_or_fail
 
 
 def register_merge_request_tools(mcp: FastMCP):
@@ -21,9 +22,10 @@ def register_merge_request_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
-        if p_id is None or m_iid is None:
-            return {"error": "Missing project_id/mr_iid or valid URL"}
+        resolved = resolve_ids_or_fail(service, url, project_id, mr_iid, "mr_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, m_iid = resolved
         return await service.get_merge_request_details(p_id, m_iid, include_jobs=include_jobs)
 
     @mcp.tool()
@@ -108,10 +110,10 @@ def register_merge_request_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
-        if p_id is None or m_iid is None:
-            return {"error": "Missing project_id/mr_iid or valid URL"}
-        assert p_id is not None and m_iid is not None
+        resolved = resolve_ids_or_fail(service, url, project_id, mr_iid, "mr_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, m_iid = resolved
         return await service.list_merge_request_notes(p_id, m_iid)
 
     @mcp.tool()
@@ -161,10 +163,10 @@ def register_merge_request_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
-        if p_id is None or m_iid is None:
-            return {"error": "Missing project_id/mr_iid or valid URL"}
-        assert p_id is not None and m_iid is not None
+        resolved = resolve_ids_or_fail(service, url, project_id, mr_iid, "mr_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, m_iid = resolved
         return await service.get_merge_request_diffs(p_id, m_iid, paths=paths)
 
     @mcp.tool()
@@ -484,9 +486,10 @@ def register_merge_request_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
-        if p_id is None or m_iid is None:
-            return {"error": "Missing project_id/mr_iid or valid URL"}
+        resolved = resolve_ids_or_fail(service, url, project_id, mr_iid, "mr_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, m_iid = resolved
         return await service.bundle_merge_request_context(p_id, m_iid)
 
     @mcp.tool()
@@ -544,10 +547,10 @@ def register_merge_request_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
-        if p_id is None or m_iid is None:
-            return {"error": "Missing project_id/mr_iid or valid URL"}
-        assert p_id is not None and m_iid is not None
+        resolved = resolve_ids_or_fail(service, url, project_id, mr_iid, "mr_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, m_iid = resolved
         return await service.summarize_mr_discussions_locally(p_id, m_iid)
 
     @mcp.tool()
@@ -562,8 +565,8 @@ def register_merge_request_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, m_iid = service.resolve_url_or_ids(url, project_id, mr_iid)
-        if p_id is None or m_iid is None:
-            return {"error": "Missing project_id/mr_iid or valid URL"}
-        assert p_id is not None and m_iid is not None
+        resolved = resolve_ids_or_fail(service, url, project_id, mr_iid, "mr_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, m_iid = resolved
         return await service.check_mr_privacy_locally(p_id, m_iid)
