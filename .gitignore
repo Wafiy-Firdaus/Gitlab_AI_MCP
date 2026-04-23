@@ -58,6 +58,61 @@ Thumbs.db
 *.tmp
 *~
 
-# Coverage HTML report
+# Coverage
 htmlcov/
 coverage.xml
+*.cover
+*.py,cover
+
+# Test runners
+.tox/
+.nox/
+
+# Type checkers
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Jupyter / IPython
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# Other Python tools
+__pypackages__/
+cython_debug/
+*.sage.py
+pip-wheel-metadata/
+share/python-wheels/
+*.manifest
+*.spec
+
+# Additional IDEs
+.vs/
+.vscode-test/
+.fleet/
+.zed/
+.spyderproject
+.spyproject
+.ropeproject
+*.iml
+
+# Security / credentials
+*.pem
+*.key
+*.crt
+secrets/
+
+# Docker
+.env.local
+.env.*.local
+docker-compose.override.yml
+
+# Patch / merge artifacts
+*.orig
+*.rej
+
+# ctags
+TAGS
+tags
