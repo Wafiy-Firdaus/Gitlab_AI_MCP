@@ -413,6 +413,17 @@ class GitLabService:
         notes = await self.client.get_issue_notes(project_id, issue_iid)
         user_notes = [n for n in notes if not n.get("system")]
 
+        # Build note_id -> discussion_id map from discussions
+        discussions = await self.client.get_issue_discussions(project_id, issue_iid)
+        note_to_discussion: dict[int, str] = {}
+        for d in discussions:
+            for note in d.get("notes", []):
+                note_to_discussion[note["id"]] = d["id"]
+
+        # Attach discussion_id to each note
+        for note in notes:
+            note["discussion_id"] = note_to_discussion.get(note["id"])
+
         summary = f"Found {len(user_notes)} user comments for Issue #{issue_iid}"
         key_findings = [f"{n['author']['name']}: {n['body'][:50]}..." for n in user_notes[:5]]
 
@@ -436,6 +447,23 @@ class GitLabService:
             "key_findings": key_findings,
             "details": note,
             "next_action": "The comment is now visible on the issue.",
+        }
+
+    async def reply_to_issue_discussion(
+        self, project_id: int | str, issue_iid: int, discussion_id: str, body: str
+    ) -> dict[str, Any]:
+        note = await self.client.reply_to_issue_discussion(
+            project_id, issue_iid, discussion_id, body
+        )
+
+        summary = f"Successfully replied to discussion on Issue #{issue_iid}"
+        key_findings = [f"Note ID: {note['id']}", f"Author: {note['author']['name']}"]
+
+        return {
+            "summary": summary,
+            "key_findings": key_findings,
+            "details": note,
+            "next_action": "The reply is now visible in the discussion thread.",
         }
 
     async def list_merge_request_notes(

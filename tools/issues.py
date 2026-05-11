@@ -114,6 +114,19 @@ def register_issue_tools(mcp: FastMCP):
         return await service.create_issue_note(project_id, issue_iid, body)
 
     @mcp.tool()
+    async def reply_to_issue_discussion(
+        project_id: int | str, issue_iid: int, discussion_id: str, body: str
+    ) -> dict[str, Any]:
+        """
+        Reply to an existing discussion thread on an issue.
+        Use get_issue_notes to find the discussion_id (it is the 'id' field on DiscussionNote type
+        notes).
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.reply_to_issue_discussion(project_id, issue_iid, discussion_id, body)
+
+    @mcp.tool()
     async def update_issue_note(
         project_id: int | str, issue_iid: int, note_id: int, body: str
     ) -> dict[str, Any]:

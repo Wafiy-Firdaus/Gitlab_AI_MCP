@@ -4,18 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-info()  { echo -e "${BLUE}ℹ${NC}  $*"; }
-ok()    { echo -e "${GREEN}✓${NC}  $*"; }
-warn()  { echo -e "${YELLOW}⚠${NC}  $*"; }
-err()   { echo -e "${RED}✗${NC}  $*" >&2; }
-bold()  { echo -e "${BOLD}$*${NC}"; }
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
 
 echo ""
 bold "GitLab AI MCP Server — Updater"
@@ -93,22 +83,14 @@ ok "Code updated"
 # Docker rebuild
 # ---------------------------------------------------------------------------
 DOCKER_COMPOSE=""
-if command -v docker >/dev/null 2>&1; then
-  if docker compose version >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker compose"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker-compose"
-  fi
-fi
-
-if [ -z "${DOCKER_COMPOSE}" ]; then
+if ! DOCKER_COMPOSE=$(detect_docker_compose); then
   err "Docker Compose not found. Cannot rebuild container."
   exit 1
 fi
 
 info "Rebuilding container..."
 
-if ! ${DOCKER_COMPOSE} up -d --build gitlab-ai-mcp 2>&1; then
+if ! $DOCKER_COMPOSE up -d --build gitlab-ai-mcp 2>&1; then
   err "Container rebuild failed."
   echo "   Check logs: ${DOCKER_COMPOSE} logs gitlab-ai-mcp"
   exit 1
@@ -116,7 +98,7 @@ fi
 
 sleep 2
 
-if [ -n "$(${DOCKER_COMPOSE} ps --status running --quiet gitlab-ai-mcp 2>/dev/null)" ]; then
+if container_is_running "$DOCKER_COMPOSE" "gitlab-ai-mcp"; then
   ok "Container rebuilt and running"
 else
   err "Container is not running after rebuild."

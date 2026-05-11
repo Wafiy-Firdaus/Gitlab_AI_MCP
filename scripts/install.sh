@@ -4,21 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# ---------------------------------------------------------------------------
-# Colors
-# ---------------------------------------------------------------------------
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-info()  { echo -e "${BLUE}ℹ${NC}  $*"; }
-ok()    { echo -e "${GREEN}✓${NC}  $*"; }
-warn()  { echo -e "${YELLOW}⚠${NC}  $*"; }
-err()   { echo -e "${RED}✗${NC}  $*" >&2; }
-bold()  { echo -e "${BOLD}$*${NC}"; }
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -77,15 +64,7 @@ echo ""
 info "Checking prerequisites..."
 
 DOCKER_COMPOSE=""
-if command -v docker >/dev/null 2>&1; then
-  if docker compose version >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker compose"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker-compose"
-  fi
-fi
-
-if [ -z "${DOCKER_COMPOSE}" ]; then
+if ! DOCKER_COMPOSE=$(detect_docker_compose); then
   err "Docker Compose is required but not found."
   echo "   Install Docker: https://docs.docker.com/get-docker/"
   exit 1
@@ -119,17 +98,22 @@ if [ ! -f "$ENV_FILE" ]; then
   fi
 fi
 
-# Check if current .env has placeholders
-has_placeholders() {
-  grep -qE '^(GITLAB_URL=https://gitlab\.example\.com|GITLAB_TOKEN=glpat-your-token)[[:space:]]*$' "$ENV_FILE"
-}
-
-if has_placeholders; then
-  ENV_NEEDS_WRITE=true
+# Determine whether we need to write .env
+HAS_PLACEHOLDERS=false
+if env_is_placeholder "$ENV_FILE" "GITLAB_URL" "https://gitlab.example.com"; then
+  HAS_PLACEHOLDERS=true
+fi
+if env_is_placeholder "$ENV_FILE" "GITLAB_TOKEN" "glpat-your-token"; then
+  HAS_PLACEHOLDERS=true
 fi
 
-# Write .env if needed
-if $ENV_NEEDS_WRITE; then
+# If user explicitly passed flags, we always update (allows token rotation)
+FLAGS_PROVIDED=false
+if [ -n "$ARG_GITLAB_URL" ] || [ -n "$ARG_GITLAB_TOKEN" ]; then
+  FLAGS_PROVIDED=true
+fi
+
+if $HAS_PLACEHOLDERS || $FLAGS_PROVIDED; then
   GITLAB_URL=""
   GITLAB_TOKEN=""
 
@@ -169,6 +153,7 @@ if $ENV_NEEDS_WRITE; then
   fi
 
   # Validate inputs
+  GITLAB_URL=$(normalize_url "$GITLAB_URL")
   if [ -z "$GITLAB_URL" ] || [ "$GITLAB_URL" = "https://gitlab.example.com" ]; then
     err "A real GitLab URL is required."
     exit 1
@@ -178,14 +163,12 @@ if $ENV_NEEDS_WRITE; then
     exit 1
   fi
 
-  # Write .env
-  cat > "$ENV_FILE" << EOF
-GITLAB_URL=${GITLAB_URL}
-GITLAB_TOKEN=${GITLAB_TOKEN}
-DEBUG=false
-LOCAL_AI_URL=http://ollama:11434
-LOCAL_AI_MODEL=llama3.1:8b
-EOF
+  # Write / update .env safely (preserve existing keys, add missing ones)
+  env_set "$ENV_FILE" "GITLAB_URL"  "$GITLAB_URL"
+  env_set "$ENV_FILE" "GITLAB_TOKEN" "$GITLAB_TOKEN"
+  env_set "$ENV_FILE" "DEBUG" "false"
+  env_set "$ENV_FILE" "LOCAL_AI_URL" "http://ollama:11434"
+  env_set "$ENV_FILE" "LOCAL_AI_MODEL" "llama3.1:8b"
 
   ok ".env configured"
 else
@@ -195,8 +178,8 @@ fi
 # ---------------------------------------------------------------------------
 # 2b. Validate token against GitLab
 # ---------------------------------------------------------------------------
-GITLAB_URL=$(grep "^GITLAB_URL=" "$ENV_FILE" | cut -d= -f2-)
-GITLAB_TOKEN=$(grep "^GITLAB_TOKEN=" "$ENV_FILE" | cut -d= -f2-)
+GITLAB_URL=$(env_get "$ENV_FILE" "GITLAB_URL")
+GITLAB_TOKEN=$(env_get "$ENV_FILE" "GITLAB_TOKEN")
 
 info "Verifying GitLab credentials..."
 
@@ -222,16 +205,12 @@ fi
 # ---------------------------------------------------------------------------
 cd "${PROJECT_ROOT}"
 
-container_running() {
-  [ -n "$(${DOCKER_COMPOSE} ps --status running --quiet gitlab-ai-mcp 2>/dev/null)" ]
-}
-
-if container_running; then
+if container_is_running "$DOCKER_COMPOSE" "gitlab-ai-mcp"; then
   info "Container already running — skipping build."
 else
   info "Building and starting container..."
 
-  if ! ${DOCKER_COMPOSE} up -d --build gitlab-ai-mcp 2>&1; then
+  if ! $DOCKER_COMPOSE up -d --build gitlab-ai-mcp 2>&1; then
     err "Container failed to start."
     echo "   Check the logs:"
     echo "     cd ${PROJECT_ROOT}"
@@ -243,7 +222,7 @@ else
   sleep 3
 fi
 
-if ! container_running; then
+if ! container_is_running "$DOCKER_COMPOSE" "gitlab-ai-mcp"; then
   err "Container is not running after start."
   echo "   Check the logs:"
   echo "     cd ${PROJECT_ROOT}"
@@ -258,10 +237,17 @@ ok "Container 'gitlab-ai-mcp' is running"
 # ---------------------------------------------------------------------------
 info "Running smoke test..."
 
-if ! ${DOCKER_COMPOSE} exec -T gitlab-ai-mcp python run_tests.py >/dev/null 2>&1; then
-  warn "Smoke test had warnings (this is usually OK if GitLab is unreachable)."
-else
+SMOKE_OUTPUT=""
+if SMOKE_OUTPUT=$($DOCKER_COMPOSE exec -T gitlab-ai-mcp python run_tests.py 2>&1); then
   ok "Smoke test passed"
+else
+  warn "Smoke test failed"
+  echo ""
+  echo "$SMOKE_OUTPUT"
+  echo ""
+  echo "   This usually means a code or dependency issue inside the container."
+  echo "   Check the logs: ${DOCKER_COMPOSE} logs gitlab-ai-mcp"
+  exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -276,11 +262,13 @@ FAILED=()
 register_kimi() {
   if command -v kimi >/dev/null 2>&1; then
     info "Registering with Kimi Code CLI..."
-    if kimi mcp add --transport stdio gitlab-ai-mcp -- "$MCP_PATH" 2>/dev/null; then
+    local out
+    if out=$(kimi mcp add --transport stdio gitlab-ai-mcp -- "$MCP_PATH" 2>&1); then
       ok "Registered with Kimi"
       REGISTERED+=("Kimi")
     else
-      warn "Could not auto-register with Kimi (may already be registered)"
+      warn "Could not register with Kimi"
+      echo "   Error: $out" >&2
       FAILED+=("Kimi")
     fi
   fi
@@ -289,11 +277,13 @@ register_kimi() {
 register_claude() {
   if command -v claude >/dev/null 2>&1; then
     info "Registering with Claude Code..."
-    if claude mcp add --scope user gitlab-ai-mcp -- "$MCP_PATH" 2>/dev/null; then
+    local out
+    if out=$(claude mcp add --scope user gitlab-ai-mcp -- "$MCP_PATH" 2>&1); then
       ok "Registered with Claude Code"
       REGISTERED+=("Claude Code")
     else
-      warn "Could not auto-register with Claude Code (may already be registered)"
+      warn "Could not register with Claude Code"
+      echo "   Error: $out" >&2
       FAILED+=("Claude Code")
     fi
   fi
@@ -302,11 +292,13 @@ register_claude() {
 register_codex() {
   if command -v codex >/dev/null 2>&1; then
     info "Registering with Codex CLI..."
-    if codex mcp add gitlab-ai-mcp -- "$MCP_PATH" 2>/dev/null; then
+    local out
+    if out=$(codex mcp add gitlab-ai-mcp -- "$MCP_PATH" 2>&1); then
       ok "Registered with Codex"
       REGISTERED+=("Codex")
     else
-      warn "Could not auto-register with Codex (may already be registered)"
+      warn "Could not register with Codex"
+      echo "   Error: $out" >&2
       FAILED+=("Codex")
     fi
   fi
@@ -315,11 +307,13 @@ register_codex() {
 register_gemini() {
   if command -v gemini >/dev/null 2>&1; then
     info "Registering with Gemini CLI..."
-    if gemini mcp add gitlab-ai-mcp -- "$MCP_PATH" 2>/dev/null; then
+    local out
+    if out=$(gemini mcp add gitlab-ai-mcp -- "$MCP_PATH" 2>&1); then
       ok "Registered with Gemini"
       REGISTERED+=("Gemini")
     else
-      warn "Could not auto-register with Gemini (may already be registered)"
+      warn "Could not register with Gemini"
+      echo "   Error: $out" >&2
       FAILED+=("Gemini")
     fi
   fi
@@ -343,7 +337,7 @@ if [ ${#REGISTERED[@]} -gt 0 ]; then
 fi
 
 if [ ${#FAILED[@]} -gt 0 ]; then
-  warn "Could not auto-register with: ${FAILED[*]}"
+  warn "Could not register with: ${FAILED[*]}"
   echo "   If these are newly installed, you may need to restart your shell first."
 fi
 

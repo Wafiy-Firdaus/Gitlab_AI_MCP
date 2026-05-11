@@ -119,9 +119,7 @@ class TestGetMergeRequestDetails:
             return_value=[{"id": 1, "name": "test", "status": "running"}]
         )
 
-        result = await service.get_merge_request_details(
-            "group/project", 42, include_jobs=True
-        )
+        result = await service.get_merge_request_details("group/project", 42, include_jobs=True)
 
         assert "Jobs: 1 jobs retrieved for head pipeline" in result["key_findings"]
         assert "head_pipeline_jobs" in result["details"]
@@ -150,7 +148,14 @@ class TestBundleIssueContext:
             ]
         )
         mock_client.get_issue_related_mrs = AsyncMock(
-            return_value=[{"iid": 10, "title": "Related MR", "state": "merged", "web_url": "http://example.com"}]
+            return_value=[
+                {
+                    "iid": 10,
+                    "title": "Related MR",
+                    "state": "merged",
+                    "web_url": "http://example.com",
+                }
+            ]
         )
 
         result = await service.bundle_issue_context("group/project", 25)

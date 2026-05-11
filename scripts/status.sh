@@ -4,18 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-ok()    { echo -e "${GREEN}✓${NC} $*"; }
-warn()  { echo -e "${YELLOW}⚠${NC} $*"; }
-err()   { echo -e "${RED}✗${NC} $*"; }
-info()  { echo -e "${BLUE}ℹ${NC} $*"; }
-bold()  { echo -e "${BOLD}$*${NC}"; }
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
 
 echo ""
 bold "GitLab AI MCP Server — Status"
@@ -26,15 +16,7 @@ echo ""
 # Docker
 # ---------------------------------------------------------------------------
 DOCKER_COMPOSE=""
-if command -v docker >/dev/null 2>&1; then
-  if docker compose version >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker compose"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker-compose"
-  fi
-fi
-
-if [ -z "${DOCKER_COMPOSE}" ]; then
+if ! DOCKER_COMPOSE=$(detect_docker_compose); then
   err "Docker Compose not found"
 else
   ok "Docker Compose: ${DOCKER_COMPOSE}"
@@ -55,12 +37,23 @@ echo "---------"
 
 if [ -n "${DOCKER_COMPOSE}" ]; then
   cd "${PROJECT_ROOT}"
-  STATUS=$(${DOCKER_COMPOSE} ps --format json gitlab-ai-mcp 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('State','unknown') if isinstance(d,dict) else 'unknown')" 2>/dev/null || echo "unknown")
+  CID=$($DOCKER_COMPOSE ps -q gitlab-ai-mcp 2>/dev/null | head -n1)
 
-  if [ "$STATUS" = "running" ]; then
-    ok "gitlab-ai-mcp is running"
-    UPTIME=$(${DOCKER_COMPOSE} ps --format json gitlab-ai-mcp 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Health','').replace('Up ','') if isinstance(d,dict) else '?')" 2>/dev/null || echo "?")
-    info "Status: ${STATUS}"
+  if [ -n "$CID" ]; then
+    STATE=$(docker inspect --format='{{.State.Status}}' "$CID" 2>/dev/null || echo "unknown")
+    HEALTH=$(docker inspect --format='{{.State.Health.Status}}' "$CID" 2>/dev/null || echo "N/A")
+    STARTED=$(docker inspect --format='{{.State.StartedAt}}' "$CID" 2>/dev/null || echo "?")
+
+    if [ "$STATE" = "running" ]; then
+      ok "gitlab-ai-mcp is running"
+      info "Started: ${STARTED}"
+      if [ "$HEALTH" != "N/A" ]; then
+        info "Health: ${HEALTH}"
+      fi
+    else
+      warn "gitlab-ai-mcp is ${STATE}"
+      info "Start it: ${DOCKER_COMPOSE} up -d"
+    fi
   else
     warn "gitlab-ai-mcp is NOT running"
     info "Start it: ${DOCKER_COMPOSE} up -d"
@@ -80,11 +73,11 @@ ENV_FILE="${PROJECT_ROOT}/.env"
 if [ ! -f "$ENV_FILE" ]; then
   err ".env not found"
   info "Run: cp .env.example .env"
-elif grep -qE '^(GITLAB_URL=https://gitlab\.example\.com|GITLAB_TOKEN=glpat-your-token)[[:space:]]*$' "$ENV_FILE"; then
+elif env_is_placeholder "$ENV_FILE" "GITLAB_URL" "https://gitlab.example.com" || env_is_placeholder "$ENV_FILE" "GITLAB_TOKEN" "glpat-your-token"; then
   warn ".env contains placeholder values"
 else
   ok ".env configured"
-  GITLAB_URL=$(grep "^GITLAB_URL=" "$ENV_FILE" | cut -d= -f2-)
+  GITLAB_URL=$(env_get "$ENV_FILE" "GITLAB_URL")
   info "GitLab URL: ${GITLAB_URL}"
 fi
 
@@ -95,9 +88,9 @@ echo ""
 bold "GitLab Connectivity"
 echo "-------------------"
 
-if [ -f "$ENV_FILE" ] && ! grep -qE '^(GITLAB_URL=https://gitlab\.example\.com|GITLAB_TOKEN=glpat-your-token)[[:space:]]*$' "$ENV_FILE"; then
-  GITLAB_URL=$(grep "^GITLAB_URL=" "$ENV_FILE" | cut -d= -f2-)
-  GITLAB_TOKEN=$(grep "^GITLAB_TOKEN=" "$ENV_FILE" | cut -d= -f2-)
+if [ -f "$ENV_FILE" ] && ! env_is_placeholder "$ENV_FILE" "GITLAB_URL" "https://gitlab.example.com" && ! env_is_placeholder "$ENV_FILE" "GITLAB_TOKEN" "glpat-your-token"; then
+  GITLAB_URL=$(env_get "$ENV_FILE" "GITLAB_URL")
+  GITLAB_TOKEN=$(env_get "$ENV_FILE" "GITLAB_TOKEN")
 
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${GITLAB_URL}/api/v4/user" 2>/dev/null || true)
   [ -z "$HTTP_CODE" ] && HTTP_CODE="000"

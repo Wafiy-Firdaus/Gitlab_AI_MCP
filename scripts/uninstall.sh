@@ -4,25 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# ---------------------------------------------------------------------------
-# Colors
-# ---------------------------------------------------------------------------
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
+# shellcheck source=scripts/_common.sh
+source "${SCRIPT_DIR}/_common.sh"
 
-info()  { echo -e "${BLUE}ℹ${NC}  $*"; }
-ok()    { echo -e "${GREEN}✓${NC}  $*"; }
-warn()  { echo -e "${YELLOW}⚠${NC}  $*"; }
-err()   { echo -e "${RED}✗${NC}  $*" >&2; }
-bold()  { echo -e "${BOLD}$*${NC}"; }
-
-# ---------------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------------
 echo ""
 bold "GitLab AI MCP Server — Uninstaller"
 echo "===================================="
@@ -32,12 +16,8 @@ echo ""
 # 1. Docker / Docker Compose check
 # ---------------------------------------------------------------------------
 DOCKER_COMPOSE=""
-if command -v docker >/dev/null 2>&1; then
-  if docker compose version >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker compose"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker-compose"
-  fi
+if ! DOCKER_COMPOSE=$(detect_docker_compose); then
+  warn "Docker Compose not found — skipping container removal"
 fi
 
 # ---------------------------------------------------------------------------
@@ -46,7 +26,7 @@ fi
 if [ -n "${DOCKER_COMPOSE}" ] && [ -f "${PROJECT_ROOT}/docker-compose.yml" ]; then
   info "Stopping and removing container..."
   cd "${PROJECT_ROOT}"
-  if ${DOCKER_COMPOSE} down --remove-orphans 2>/dev/null; then
+  if $DOCKER_COMPOSE down --remove-orphans 2>/dev/null; then
     ok "Container stopped and removed"
   else
     warn "Could not stop container (it may not be running)"

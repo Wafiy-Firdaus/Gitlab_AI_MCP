@@ -675,6 +675,21 @@ class GitLabClient:
             data={"body": body},
         )
 
+    async def get_issue_discussions(
+        self, project_id: int | str, issue_iid: int
+    ) -> list[dict[str, Any]]:
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/issues/{issue_iid}/discussions"
+        )
+
+    async def reply_to_issue_discussion(
+        self, project_id: int | str, issue_iid: int, discussion_id: str, body: str
+    ) -> dict[str, Any]:
+        return await self.post(
+            f"/projects/{self._format_project_id(project_id)}/issues/{issue_iid}/discussions/{discussion_id}/notes",
+            data={"body": body},
+        )
+
     async def create_merge_request_discussion(
         self, project_id: int | str, mr_iid: int, body: str, position: dict[str, Any] | None = None
     ) -> dict[str, Any]:

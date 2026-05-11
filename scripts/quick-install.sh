@@ -11,14 +11,40 @@ echo "GitLab AI MCP Server — Quick Install"
 echo "===================================="
 echo ""
 
+# ---------------------------------------------------------------------------
+# Prerequisites check
+# ---------------------------------------------------------------------------
+if ! command -v git >/dev/null 2>&1; then
+  echo "ERROR: git is required but not installed." >&2
+  echo "  Install git: https://git-scm.com/downloads" >&2
+  exit 1
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "ERROR: curl is required but not installed." >&2
+  echo "  Install curl via your package manager." >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Clone or update
+# ---------------------------------------------------------------------------
 if [ -d "$INSTALL_DIR" ]; then
   echo "Directory already exists: $INSTALL_DIR"
   echo "Updating to latest version..."
   cd "$INSTALL_DIR"
-  git pull --ff-only
+  if ! git pull --ff-only 2>&1; then
+    echo "ERROR: git pull failed. You may have local changes in ${INSTALL_DIR}." >&2
+    echo "  Resolve conflicts manually, then re-run this installer." >&2
+    exit 1
+  fi
 else
   echo "Cloning into $INSTALL_DIR..."
-  git clone "$REPO_URL" "$INSTALL_DIR"
+  if ! git clone "$REPO_URL" "$INSTALL_DIR" 2>&1; then
+    echo "ERROR: git clone failed." >&2
+    echo "  Check your internet connection and that you can reach GitHub." >&2
+    exit 1
+  fi
   cd "$INSTALL_DIR"
 fi
 
