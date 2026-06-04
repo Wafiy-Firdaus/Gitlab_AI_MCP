@@ -1,6 +1,6 @@
 # GitLab AI MCP Server
 
-A high-performance, containerized [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that connects AI coding assistants (Claude, Codex, Gemini, Kimi) to any GitLab instance — self-hosted or cloud.
+A high-performance, containerized [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that connects AI coding assistants (Claude, Codex, Gemini, Kimi, Reasonix) to any GitLab instance — self-hosted or cloud.
 
 ## What you can do
 
@@ -277,19 +277,25 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for release history.
 ## 📁 Project Structure
 
 ```
-server.py                  — MCP server entrypoint
+server.py                  — MCP server entrypoint (103 tools, 2 prompt templates)
 config.py                  — Settings (reads from .env)
 _version.py                — Single source of truth for package version
-gitlab/client.py           — Async HTTP/2 GitLab API client
+gitlab/client.py           — Async HTTP/2 GitLab API client with retry + pagination
 gitlab/models.py           — Pydantic models for GitLab resources
 services/
-  gitlab_service.py        — Business logic and response formatting
-  local_ai_service.py      — Ollama integration for local AI features
-  review_digest.py         — MR discussion digest helpers
+  gitlab_service.py        — Thin facade; inherits all domain mixins
+  _issue_mixin.py          — Issue CRUD, notes, discussions, triage, attachments
+  _mr_mixin.py             — MR operations, diffs, reviews, draft notes, approvals
+  _repo_ci_mixin.py        — Repository, CI/CD pipelines, jobs, variables
+  _security_mixin.py       — Vulnerability findings, dependencies, audit events
+  _utils.py                — Shared upload URL helpers
+  local_ai_service.py      — Ollama integration (secret scrubbing + triage)
+  review_digest.py         — Pure helpers for MR discussion normalisation
 tools/                     — MCP tool definitions (one file per domain)
+  _annotations.py          — Pre-built MCP ToolAnnotations constants
   _utils.py                — Shared helpers (URL resolution, error formatting)
   exceptions.py            — Structured error types for tool handlers
-tests/                     — Unit tests (pytest, no network required)
+tests/                     — 187 unit tests (pytest, no network required)
 scripts/
   quick-install.sh         — One-liner entrypoint (clone + run install.sh)
   install.sh               — Interactive installer (validates token, builds, registers)
@@ -298,8 +304,8 @@ scripts/
   logs.sh                  — Tail container logs
   uninstall.sh             — Clean removal (stop container + unregister)
   run_mcp.sh               — Launcher script used by all AI CLIs
-mcp-configs/               — Global MCP config templates (Kimi, Claude, Codex, Gemini)
-.github/                   — Issue & PR templates, CI workflows
+mcp-configs/               — Global MCP config templates (Claude, Codex, Gemini, Kimi, Reasonix)
+.github/                   — CI workflows (lint, test, docker, release, Bandit SAST)
 docker-compose.yml         — Base stack
 docker-compose.gpu.yml     — NVIDIA GPU override (use with --profile ollama)
 Makefile                   — Common dev tasks (check, coverage, docker-build)
