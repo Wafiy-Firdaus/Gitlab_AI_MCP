@@ -4,10 +4,11 @@ from mcp.server.fastmcp import FastMCP
 
 from gitlab.client import GitLabClient
 from services.gitlab_service import GitLabService
+from tools._annotations import READ_ONLY, WRITE_DESTRUCTIVE, WRITE_IDEMPOTENT
 
 
-def register_repository_tools(mcp: FastMCP):
-    @mcp.tool()
+def register_repository_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=READ_ONLY)
     async def list_repository_files(
         project_id: int | str, path: str = "", ref: str = "main"
     ) -> dict[str, Any]:
@@ -18,7 +19,7 @@ def register_repository_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_repository_files(project_id, path=path, ref=ref)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_file_content(
         project_id: int | str, file_path: str, ref: str = "main", include_raw: bool = False
     ) -> dict[str, Any]:
@@ -32,7 +33,7 @@ def register_repository_tools(mcp: FastMCP):
             project_id, file_path, ref=ref, include_raw=include_raw
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_multiple_files(
         project_id: int | str,
         file_paths: list[str],
@@ -49,7 +50,7 @@ def register_repository_tools(mcp: FastMCP):
             project_id, file_paths, ref=ref, include_metadata=include_metadata
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def create_branch(
         project_id: int | str, branch: str, ref: str = "main"
     ) -> dict[str, Any]:
@@ -61,7 +62,7 @@ def register_repository_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.create_branch(project_id, branch, ref)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_branch(project_id: int | str, branch: str) -> dict[str, Any]:
         """
         Get details of a specific branch, including its HEAD commit SHA.
@@ -71,7 +72,7 @@ def register_repository_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_branch(project_id, branch)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_branches(project_id: int | str, branches: list[str]) -> dict[str, Any]:
         """
         Fetch details for multiple branches in parallel.
@@ -81,7 +82,7 @@ def register_repository_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_branches(project_id, branches)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_repository_tags(project_id: int | str, limit: int = 50) -> dict[str, Any]:
         """
         List all tags in the repository.
@@ -92,7 +93,7 @@ def register_repository_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_repository_tags(project_id, limit=limit)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def create_repository_file(
         project_id: int | str, file_path: str, branch: str, content: str, commit_message: str
     ) -> dict[str, Any]:
@@ -105,7 +106,7 @@ def register_repository_tools(mcp: FastMCP):
             project_id, file_path, branch, content, commit_message, is_new=True
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def update_repository_file(
         project_id: int | str, file_path: str, branch: str, content: str, commit_message: str
     ) -> dict[str, Any]:
@@ -118,7 +119,7 @@ def register_repository_tools(mcp: FastMCP):
             project_id, file_path, branch, content, commit_message, is_new=False
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def create_batch_commit(
         project_id: int | str,
         branch: str,
@@ -136,7 +137,7 @@ def register_repository_tools(mcp: FastMCP):
             project_id, branch, commit_message, actions, start_branch
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_repository_commits(
         project_id: int | str, ref_name: str | None = None
     ) -> dict[str, Any]:
@@ -147,7 +148,7 @@ def register_repository_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_repository_commits(project_id, ref_name)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_commit_details(project_id: int | str, sha: str) -> dict[str, Any]:
         """
         Get detailed information about a specific commit by its SHA.
@@ -156,7 +157,7 @@ def register_repository_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_commit_details(project_id, sha)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_file_blame(
         project_id: int | str, file_path: str, ref: str = "main"
     ) -> dict[str, Any]:
@@ -167,7 +168,7 @@ def register_repository_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_file_blame(project_id, file_path, ref)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_raw_file_content(
         project_id: int | str | None = None,
         file_path: str | None = None,
@@ -184,7 +185,7 @@ def register_repository_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_raw_file_content(project_id, file_path, ref, raw_url)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def fetch_gitlab_upload(upload_url: str) -> dict[str, Any]:
         """
         Fetch an image or file attached to a GitLab comment, issue, or MR.
@@ -192,21 +193,6 @@ def register_repository_tools(mcp: FastMCP):
         (e.g. /uploads/abc123/image.png or https://gitlab.example.com/uploads/abc123/image.png).
         Returns base64-encoded content and content-type so images can be displayed inline.
         """
-        import base64
-
         client = await GitLabClient.get_instance()
-        content, content_type = await client.fetch_upload(upload_url)
-
-        summary = f"Successfully fetched upload from {upload_url}"
-        key_findings = [f"Content Type: {content_type}", f"Size: {len(content)} bytes"]
-
-        return {
-            "summary": summary,
-            "key_findings": key_findings,
-            "details": {
-                "content_type": content_type,
-                "content_base64": base64.b64encode(content).decode("utf-8"),
-                "size_bytes": len(content),
-            },
-            "next_action": "The file content is available in base64 format for display or processing.",
-        }
+        service = GitLabService(client)
+        return await service.fetch_upload(upload_url)

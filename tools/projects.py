@@ -4,10 +4,11 @@ from mcp.server.fastmcp import FastMCP
 
 from gitlab.client import GitLabClient
 from services.gitlab_service import GitLabService
+from tools._annotations import READ_ONLY, WRITE_DESTRUCTIVE
 
 
-def register_project_tools(mcp: FastMCP):
-    @mcp.tool()
+def register_project_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=READ_ONLY)
     async def get_current_user() -> dict[str, Any]:
         """
         Get details of the currently authenticated GitLab user.
@@ -17,32 +18,16 @@ def register_project_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_current_user()
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def ping_gitlab() -> dict[str, Any]:
         """
         Check connectivity to the GitLab instance.
         Returns basic system status, current user info, and GitLab version.
         """
-        client = await GitLabClient.get_instance()
-
         try:
-            user = await client.get_current_user()
-            version_resp = await client.client.get("/version")
-            version_data = version_resp.json()
-
-            return {
-                "summary": f"GitLab {version_data.get('version', 'unknown')} is reachable",
-                "key_findings": [
-                    f"Connected as: {user.get('name', 'unknown')} (@{user.get('username', 'unknown')})",
-                    f"GitLab version: {version_data.get('version', 'unknown')}",
-                    f"Revision: {version_data.get('revision', 'unknown')[:8]}",
-                ],
-                "details": {
-                    "user": user,
-                    "version": version_data,
-                },
-                "next_action": "Connection is healthy. You can start using other tools.",
-            }
+            client = await GitLabClient.get_instance()
+            service = GitLabService(client)
+            return await service.ping_gitlab()
         except Exception as exc:
             return {
                 "summary": "GitLab connection failed",
@@ -51,7 +36,7 @@ def register_project_tools(mcp: FastMCP):
                 "next_action": "Check GITLAB_URL and GITLAB_TOKEN in your .env file.",
             }
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_projects(
         search: str | None = None,
         group_id: int | str | None = None,
@@ -71,7 +56,7 @@ def register_project_tools(mcp: FastMCP):
             search=search, group_id=group_id, fields=fields, limit=limit
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_group_projects(
         group_id: int | str, fields: list[str] | None = None, limit: int = 20
     ) -> dict[str, Any]:
@@ -85,7 +70,7 @@ def register_project_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_group_projects(group_id, fields=fields, limit=limit)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_project_details(project_id: int | str) -> dict[str, Any]:
         """
         Get metadata for a specific project.
@@ -94,7 +79,7 @@ def register_project_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_project_details(project_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_project_issues(project_id: int | str, state: str = "opened") -> dict[str, Any]:
         """
         List issues for a project. 'state' can be 'opened' or 'closed'.
@@ -103,7 +88,7 @@ def register_project_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_project_issues(project_id, state=state)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_project_merge_requests(
         project_id: int | str, state: str = "opened"
     ) -> dict[str, Any]:
@@ -114,7 +99,7 @@ def register_project_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_project_merge_requests(project_id, state=state)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_project_labels(project_id: int | str) -> dict[str, Any]:
         """
         List all labels defined in a project.
@@ -123,7 +108,7 @@ def register_project_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_project_labels(project_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def create_project_label(
         project_id: int | str, name: str, color: str, description: str | None = None
     ) -> dict[str, Any]:
@@ -134,7 +119,7 @@ def register_project_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.create_project_label(project_id, name, color, description)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_project_members(
         project_id: int | str, query: str | None = None
     ) -> dict[str, Any]:
@@ -145,7 +130,7 @@ def register_project_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_project_members(project_id, query)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def bundle_project_intelligence(project_id: int | str) -> dict[str, Any]:
         """
         High-performance tool that bundles project details, recent pipelines,

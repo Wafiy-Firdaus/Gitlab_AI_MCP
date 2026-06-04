@@ -2,9 +2,8 @@
 
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
-
 from services.gitlab_service import GitLabService
+from tools.exceptions import MissingIdentifierError
 
 
 def resolve_ids_or_fail(
@@ -20,12 +19,5 @@ def resolve_ids_or_fail(
     """
     p_id, r_id = service.resolve_url_or_ids(url, project_id, resource_id)
     if p_id is None or r_id is None:
-        return {
-            "error": f"Missing project_id/{resource_name}_id or valid URL",
-        }
+        return MissingIdentifierError(resource_name).to_dict()
     return p_id, r_id
-
-
-def register_diagnostic_tools(mcp: FastMCP) -> None:
-    """Register health-check and diagnostic tools."""
-    pass

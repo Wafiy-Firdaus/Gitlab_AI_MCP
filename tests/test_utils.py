@@ -20,8 +20,11 @@ class TestResolveIdsOrFail:
 
         result = resolve_ids_or_fail(service, None, None, None, "mr_iid")
         assert isinstance(result, dict)
-        assert "error" in result
-        assert "Missing" in result["error"]
+        assert "summary" in result
+        assert "Error" in result["summary"]
+        assert "key_findings" in result
+        assert "details" in result
+        assert "next_action" in result
 
     def test_resolves_from_url(self):
         client = GitLabClient()
@@ -38,13 +41,45 @@ class TestExceptions:
         d = err.to_dict()
         assert "something failed" in d["summary"]
         assert d["details"]["code"] == 500
+        assert "key_findings" in d
+        assert "next_action" in d
 
     def test_missing_identifier_error_message(self):
         err = MissingIdentifierError("issue_iid")
         assert "Missing" in err.message
         assert "issue_iid" in err.message
 
+    def test_missing_identifier_error_to_dict(self):
+        err = MissingIdentifierError("issue_iid")
+        d = err.to_dict()
+        assert "issue_iid" in d["summary"]
+        assert "key_findings" in d
+        assert "next_action" in d
+
     def test_gitlab_api_error_includes_status(self):
         err = GitLabApiError("not found", status_code=404)
         d = err.to_dict()
         assert d["details"]["status_code"] == 404
+
+
+class TestResolveIdsOrFailNegativePaths:
+    def test_returns_error_dict_when_no_url_and_no_ids(self):
+        from services.gitlab_service import GitLabService
+        from tools._utils import resolve_ids_or_fail
+
+        client = GitLabClient()
+        service = GitLabService(client)
+        result = resolve_ids_or_fail(service, None, None, None, "issue_iid")
+        assert isinstance(result, dict)
+        assert "summary" in result
+        assert "Error" in result["summary"]
+
+    def test_returns_error_dict_when_url_does_not_match(self):
+        from services.gitlab_service import GitLabService
+        from tools._utils import resolve_ids_or_fail
+
+        client = GitLabClient()
+        service = GitLabService(client)
+        result = resolve_ids_or_fail(service, "https://notgitlab.com/foo", None, None, "mr_iid")
+        assert isinstance(result, dict)
+        assert "Error" in result["summary"]

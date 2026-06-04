@@ -8,47 +8,28 @@ A containerized [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 
 
 ## Commands
 
-**Install dependencies (host development):**
 ```bash
-pip install -e ".[dev]"   # or: uv pip install -e ".[dev]"
-```
+# Install
+pip install -e ".[dev]"          # or: uv pip install -e ".[dev]"
 
-**Lint:**
-```bash
-ruff check .
-ruff format --check .
-```
+# Full check suite (lint + format-check + types + tests + smoke)
+make check
 
-**Type check:**
-```bash
-mypy .
-```
+# Individual steps
+ruff check .                      # lint
+ruff format .                     # auto-format (use --check to verify only)
+mypy .                            # type check
+python -m pytest -q               # unit tests
+python -m pytest tests/test_gitlab_client.py -v          # single file
+python -m pytest tests/test_review_digest.py -v -k "test_name"  # single test
+python -m pytest --cov=gitlab --cov=services --cov=tools --cov-report=term-missing  # with coverage
+python run_tests.py               # smoke test (no live GitLab needed)
 
-**Unit tests:**
-```bash
-python -m pytest -q
-# single test file:
-python -m pytest tests/test_gitlab_client.py -v
-# single test by name:
-python -m pytest tests/test_review_digest.py -v -k "test_name"
-```
-
-**Smoke test (checks tool/prompt registration, no live GitLab needed):**
-```bash
-python run_tests.py
-```
-
-**Run the full stack:**
-```bash
-docker compose up -d --build                                                 # core only
-docker compose --profile ollama up -d --build                               # + local AI on CPU
+# Docker
+docker compose up -d --build
+docker compose --profile ollama up -d --build            # + Ollama (CPU)
 docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up -d --build  # + GPU
-```
-
-**Verify container health:**
-```bash
-docker compose ps
-docker compose exec gitlab-ai-mcp python run_tests.py
+docker compose exec gitlab-ai-mcp python run_tests.py    # verify container
 ```
 
 ## Architecture
@@ -56,50 +37,73 @@ docker compose exec gitlab-ai-mcp python run_tests.py
 ```
 server.py          — FastMCP entrypoint; registers all tools, defines review_mr and debug_job prompt templates
 config.py          — Pydantic Settings; reads GITLAB_URL, GITLAB_TOKEN, LOCAL_AI_* from .env
-gitlab/client.py   — Singleton async HTTP/2 client (GitLabClient); all raw GitLab API calls live here
+_version.py        — Single source of truth for package version
+gitlab/
+  client.py        — Singleton async HTTP/2 client (GitLabClient); all raw GitLab API calls live here
+  models.py        — Pydantic models: GitLabProject, GitLabIssue, GitLabMergeRequest
 services/
-  gitlab_service.py    — Orchestration layer; called by tool handlers; returns structured {summary, key_findings, details, next_action}
+  gitlab_service.py    — Orchestration layer; called by tool handlers; shapes all responses
   local_ai_service.py  — Ollama client; scrubs secrets before sending; used by triage/summarise/privacy tools
   review_digest.py     — Pure, no-I/O helpers for normalising MR discussions and building digests
 tools/             — One file per domain; each registers handlers with mcp via register_*_tools(mcp)
-  ci_cd.py  issues.py  merge_requests.py  projects.py  repository.py  search.py  security.py
+  _annotations.py  — Pre-built MCP ToolAnnotations: READ_ONLY, WRITE_IDEMPOTENT, WRITE_DESTRUCTIVE
+  _utils.py        — Shared helpers: resolve_ids_or_fail(), register_diagnostic_tools()
+  exceptions.py    — Structured error types: GitLabToolError, MissingIdentifierError, GitLabApiError
+  ci_cd.py         — Pipelines, jobs, bridges, variables, artifacts, triggers
+  issues.py        — Issues, notes, discussions, labels, triage
+  merge_requests.py — MRs, diffs, discussions, approvals, drafts, reviews, merge, rebase
+  projects.py      — Projects, groups, members, environments, intelligence bundles
+  repository.py    — Files, branches, tags, commits, blame, batch commits
+  search.py        — Code search, global search, user search
+  security.py      — Vulnerability findings, dependencies, audit events
 tests/             — pytest unit tests (no network required)
 scripts/
-  run_mcp.sh        — Launcher used by all AI CLIs; checks .env exists, auto-starts the container, then exec's server.py
+  run_mcp.sh       — Launcher used by all AI CLIs; checks .env, auto-starts container, exec's server.py
+  install.sh       — Interactive installer; detects Kimi/Claude/Codex/Gemini/Reasonix CLIs
 ```
 
 ### Key design decisions
 
-**Singleton `GitLabClient`** — `GitLabClient.get_instance()` returns a shared async `httpx` client with HTTP/2, a 100-connection pool, and exponential-backoff retry (configurable via `GITLAB_MAX_RETRIES` / `GITLAB_RETRY_DELAY`). Never instantiate `GitLabClient()` directly in tools — always use `await GitLabClient.get_instance()`.
+**Layered call path** — Tools → `GitLabService` → `GitLabClient` → GitLab REST API v4. Tools must never call `GitLabClient` directly.
 
-**Layered call path** — Tools call `GitLabService`, which calls `GitLabClient`. Tools must not call `GitLabClient` directly. This keeps response shaping in one place.
+**Singleton `GitLabClient`** — `GitLabClient.get_instance()` returns a shared async `httpx` client with HTTP/2, a 100-connection pool, and exponential-backoff retry. Never instantiate `GitLabClient()` directly. The client maintains two underlying `httpx` clients: `self.client` (API calls with `PRIVATE-TOKEN` header) and `self.web_client` (web routes / uploads, no auth header).
 
-**`GitLabService` per-call instantiation** — Tools always construct a fresh service per handler invocation:
+**`GitLabService` per-call instantiation** — Construct a fresh service in every tool handler; do not cache across calls:
 ```python
 client = await GitLabClient.get_instance()
 service = GitLabService(client)
 ```
-`GitLabService.__init__` also creates a `LocalAIService`, so do not hold service instances across calls.
 
-**URL or IDs** — Most tool handlers accept either a full GitLab URL or explicit `project_id` + resource IID. Use `service.resolve_url_or_ids(url, project_id, resource_id)` to normalize before calling service methods. `GitLabClient.parse_gitlab_url()` does the URL parsing; `parse_mr_diff_url()` handles diff anchor URLs.
+**Response contract** — Every `GitLabService` method must return exactly:
+```python
+{"summary": str, "key_findings": list[str], "details": dict, "next_action": str}
+```
 
-**Response contract** — Every `GitLabService` method returns `{summary: str, key_findings: list[str], details: dict, next_action: str}`. New service methods must follow this shape.
+**URL or IDs** — Most handlers accept a full GitLab URL or explicit `project_id` + resource IID. Use `resolve_ids_or_fail()` from `tools/_utils.py` (wraps `service.resolve_url_or_ids()` and returns the error dict on failure). `GitLabClient.parse_gitlab_url()` parses URLs; `parse_mr_diff_url()` handles diff anchor URLs.
 
-**`project_id` encoding** — `GitLabClient._format_project_id()` URL-encodes `"group/subgroup/project"` path strings. All client methods accept `int | str` for project IDs.
+**`project_id` encoding** — `GitLabClient._format_project_id()` URL-encodes `"group/subgroup/project"` path strings. All client methods accept `int | str`.
 
-**Local AI is optional** — `LocalAIService` gracefully degrades: if Ollama is unreachable it returns an error string, so all other tools remain functional. `scrub_secrets()` runs on every payload before it reaches Ollama (redacts IPs, GitLab tokens, AWS keys, generic password/secret assignments, and long hex strings).
+**Pagination** — Use `client.get_all(endpoint, limit=N)` for paginated endpoints (follows `X-Next-Page`). Always pass `limit=` to avoid unbounded fetches.
 
-**Pagination** — Use `client.get_all()` for endpoints that paginate (follows `X-Next-Page`). Pass `limit=` to avoid fetching unbounded lists.
+**Retry / rate-limiting** — `_request()` retries on HTTP 429 (respects `Retry-After`), 5xx, and network errors. Backoff: `retry_delay * (2 ** attempt)`.
 
-**Test env bootstrap** — `tests/conftest.py` sets `GITLAB_URL` and `GITLAB_TOKEN` before any project import so the `Settings` singleton never reads a local `.env` during tests. Do not import `config` or tool modules at the top level of test files.
+**MCP tool annotations** — Every `@mcp.tool()` must include `annotations=` using one of the three constants from `tools/_annotations.py`: `READ_ONLY`, `WRITE_IDEMPOTENT`, or `WRITE_DESTRUCTIVE`.
+
+**Bundle tools** — High-level tools that fetch multiple resources in parallel to reduce round-trips and token usage: `bundle_merge_request_context`, `bundle_issue_context`, `bundle_project_intelligence`, `bundle_pipeline_context`.
+
+**Local AI is optional** — `LocalAIService` degrades gracefully: unreachable Ollama returns an error string; all other tools remain functional. `scrub_secrets()` runs on every payload before it reaches Ollama (redacts IPs, GitLab tokens, AWS keys, long hex strings).
+
+**Test env bootstrap** — `tests/conftest.py` injects dummy `GITLAB_URL` and `GITLAB_TOKEN` env vars before any project import so `Settings` never reads a local `.env`. Do not import `config` or tool modules at the top level of test files.
 
 ## Adding a new tool
 
 1. Pick the right domain file in `tools/` (or create one if the domain is new).
-2. Add an async handler that calls `GitLabService`; decorate with `@mcp.tool()`.
+2. Add an async handler that calls `GitLabService`; decorate with `@mcp.tool(annotations=READ_ONLY|WRITE_IDEMPOTENT|WRITE_DESTRUCTIVE)`.
 3. Register the handler inside `register_*_tools(mcp)` in the same file.
 4. If the operation needs a new GitLab API call, add a method to `GitLabClient` first, then expose it via `GitLabService`.
 5. Add a unit test in `tests/` (mock `httpx` responses; no live GitLab required).
+6. If you created a new `tools/*.py` file, import and call its `register_*_tools(mcp)` in `server.py`.
+7. Update `AGENTS.md` if you change architecture or conventions.
 
 ## Environment variables
 

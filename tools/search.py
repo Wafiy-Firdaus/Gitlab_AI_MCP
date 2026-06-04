@@ -4,10 +4,11 @@ from mcp.server.fastmcp import FastMCP
 
 from gitlab.client import GitLabClient
 from services.gitlab_service import GitLabService
+from tools._annotations import READ_ONLY
 
 
-def register_search_tools(mcp: FastMCP):
-    @mcp.tool()
+def register_search_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=READ_ONLY)
     async def search_users(search: str) -> dict[str, Any]:
         """
         Search for GitLab users by name, username, or email.
@@ -17,7 +18,7 @@ def register_search_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.search_users(search)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def search_code(project_id: int, search: str) -> dict[str, Any]:
         """
         Search for a string in the project's code (blobs).
@@ -26,7 +27,7 @@ def register_search_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.search_code(project_id, search)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def global_search(
         scope: str, search: str, group_id: int | str | None = None
     ) -> dict[str, Any]:

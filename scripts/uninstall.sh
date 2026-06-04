@@ -87,10 +87,34 @@ remove_gemini() {
   fi
 }
 
+remove_reasonix() {
+  local REASONIX_CONFIG="${HOME}/.reasonix/config.json"
+  if [ -f "$REASONIX_CONFIG" ] && command -v jq >/dev/null 2>&1; then
+    if jq -e '.mcpServers."gitlab-ai-mcp"' "$REASONIX_CONFIG" >/dev/null 2>&1; then
+      local tmp_config="${REASONIX_CONFIG}.tmp.$$"
+      if jq 'del(.mcpServers."gitlab-ai-mcp")' "$REASONIX_CONFIG" > "$tmp_config" 2>/dev/null; then
+        mv "$tmp_config" "$REASONIX_CONFIG"
+        ok "Removed from Reasonix"
+        REMOVED+=("Reasonix")
+      else
+        rm -f "$tmp_config"
+        warn "Failed to update Reasonix config — remove 'gitlab-ai-mcp' entry manually from ${REASONIX_CONFIG}"
+        MISSING+=("Reasonix")
+      fi
+    else
+      MISSING+=("Reasonix")
+    fi
+  elif [ -f "$REASONIX_CONFIG" ]; then
+    warn "jq not available — remove 'gitlab-ai-mcp' entry manually from ${REASONIX_CONFIG}"
+    MISSING+=("Reasonix")
+  fi
+}
+
 remove_kimi
 remove_claude
 remove_codex
 remove_gemini
+remove_reasonix
 
 # ---------------------------------------------------------------------------
 # 4. Summary

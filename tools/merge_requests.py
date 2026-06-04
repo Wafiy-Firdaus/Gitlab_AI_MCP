@@ -1,14 +1,18 @@
+import base64
+import binascii
+import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from gitlab.client import GitLabClient
 from services.gitlab_service import GitLabService
+from tools._annotations import READ_ONLY, WRITE_DESTRUCTIVE, WRITE_IDEMPOTENT
 from tools._utils import resolve_ids_or_fail
 
 
-def register_merge_request_tools(mcp: FastMCP):
-    @mcp.tool()
+def register_merge_request_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=READ_ONLY)
     async def get_merge_request_details(
         project_id: int | str | None = None,
         mr_iid: int | None = None,
@@ -28,7 +32,7 @@ def register_merge_request_tools(mcp: FastMCP):
         p_id, m_iid = resolved
         return await service.get_merge_request_details(p_id, m_iid, include_jobs=include_jobs)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def create_merge_request(
         project_id: int | str,
         source_branch: str,
@@ -58,7 +62,7 @@ def register_merge_request_tools(mcp: FastMCP):
             remove_source_branch=remove_source_branch,
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def update_merge_request(
         project_id: int | str,
         mr_iid: int,
@@ -91,7 +95,7 @@ def register_merge_request_tools(mcp: FastMCP):
             target_branch=target_branch,
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def approve_merge_request(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         Approve a specific merge request.
@@ -100,7 +104,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.approve_merge_request(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_merge_request_notes(
         project_id: int | str | None = None, mr_iid: int | None = None, url: str | None = None
     ) -> dict[str, Any]:
@@ -116,7 +120,7 @@ def register_merge_request_tools(mcp: FastMCP):
         p_id, m_iid = resolved
         return await service.list_merge_request_notes(p_id, m_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def create_merge_request_note(
         project_id: int | str, mr_iid: int, body: str
     ) -> dict[str, Any]:
@@ -127,7 +131,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.create_merge_request_note(project_id, mr_iid, body)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def update_merge_request_note(
         project_id: int | str, mr_iid: int, note_id: int, body: str
     ) -> dict[str, Any]:
@@ -138,7 +142,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.update_note(project_id, "merge_requests", mr_iid, note_id, body)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def delete_merge_request_note(
         project_id: int | str, mr_iid: int, note_id: int
     ) -> dict[str, Any]:
@@ -149,7 +153,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.delete_note(project_id, "merge_requests", mr_iid, note_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_merge_request_diffs(
         project_id: int | str | None = None,
         mr_iid: int | None = None,
@@ -169,7 +173,7 @@ def register_merge_request_tools(mcp: FastMCP):
         p_id, m_iid = resolved
         return await service.get_merge_request_diffs(p_id, m_iid, paths=paths)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_merge_request_discussions(
         project_id: int | str,
         mr_iid: int,
@@ -187,7 +191,7 @@ def register_merge_request_tools(mcp: FastMCP):
             project_id, mr_iid, unresolved_only, include_system
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_merge_request_discussion_summaries(
         project_id: int | str, mr_iid: int, unresolved_only: bool = False
     ) -> dict[str, Any]:
@@ -203,7 +207,7 @@ def register_merge_request_tools(mcp: FastMCP):
             project_id, mr_iid, unresolved_only
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def reply_to_discussion(
         project_id: int | str, mr_iid: int, discussion_id: str, body: str
     ) -> dict[str, Any]:
@@ -217,7 +221,7 @@ def register_merge_request_tools(mcp: FastMCP):
             project_id, mr_iid, discussion_id, body
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def create_merge_request_discussion(
         project_id: int | str,
         mr_iid: int,
@@ -237,7 +241,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         resolved_position = position
         if position is None and new_path:
-            resolved_position = await client.build_text_diff_position(
+            position_result = await service.build_text_diff_position(
                 project_id,
                 mr_iid,
                 new_path,
@@ -245,11 +249,12 @@ def register_merge_request_tools(mcp: FastMCP):
                 new_line=new_line,
                 old_line=old_line,
             )
+            resolved_position = position_result["details"]["position"]
         return await service.create_merge_request_discussion(
             project_id, mr_iid, body, resolved_position
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_latest_merge_request_version(
         project_id: int | str, mr_iid: int
     ) -> dict[str, Any]:
@@ -260,7 +265,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_latest_merge_request_version(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def build_diff_position(
         project_id: int | str,
         mr_iid: int,
@@ -278,7 +283,7 @@ def register_merge_request_tools(mcp: FastMCP):
             project_id, mr_iid, new_path, old_path=old_path, new_line=new_line, old_line=old_line
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def preview_diff_comment_payload(
         project_id: int | str,
         mr_iid: int,
@@ -293,9 +298,11 @@ def register_merge_request_tools(mcp: FastMCP):
         [Read] Preview diff comment payload (no writes).
         """
         client = await GitLabClient.get_instance()
-        position = await client.build_text_diff_position(
+        service = GitLabService(client)
+        position_result = await service.build_text_diff_position(
             project_id, mr_iid, new_path, old_path=old_path, new_line=new_line, old_line=old_line
         )
+        position = position_result["details"]["position"]
         mode = "draft_diff_note" if draft else "diff_thread"
         return {
             "summary": "Preview diff comment payload",
@@ -313,7 +320,7 @@ def register_merge_request_tools(mcp: FastMCP):
             "next_action": "Review the payload before posting.",
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_review_summary(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         [Read] Totals + per-file breakdown. Threads omitted unless include_discussions=true.
@@ -322,7 +329,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_review_summary(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_unresolved_discussion_digest(
         project_id: int | str, mr_iid: int
     ) -> dict[str, Any]:
@@ -333,7 +340,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_unresolved_discussion_digest(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_suggested_replies(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         [Read] Template replies per unresolved thread.
@@ -342,7 +349,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_suggested_replies(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_review_digest(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         [Read] Combined digest (totals, files, items, suggested replies).
@@ -351,7 +358,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_review_digest(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_draft_reply_plan(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         [Read] Plan to stage replies (target_mode) from unresolved discussions.
@@ -360,7 +367,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_draft_reply_plan(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_draft_notes(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         [Read] Your draft notes on MR (normalized).
@@ -369,7 +376,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_merge_request_draft_notes(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def create_draft_note(
         project_id: int | str,
         mr_iid: int,
@@ -389,7 +396,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         resolved_position = position
         if position is None and new_path:
-            resolved_position = await client.build_text_diff_position(
+            position_result = await service.build_text_diff_position(
                 project_id,
                 mr_iid,
                 new_path,
@@ -397,6 +404,7 @@ def register_merge_request_tools(mcp: FastMCP):
                 new_line=new_line,
                 old_line=old_line,
             )
+            resolved_position = position_result["details"]["position"]
         return await service.create_merge_request_draft_note(
             project_id,
             mr_iid,
@@ -406,7 +414,7 @@ def register_merge_request_tools(mcp: FastMCP):
             resolve_discussion=resolve_discussion,
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def delete_draft_note(
         project_id: int | str, mr_iid: int, draft_note_id: int
     ) -> dict[str, Any]:
@@ -417,7 +425,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.delete_merge_request_draft_note(project_id, mr_iid, draft_note_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def publish_draft_notes(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         [Publish] Bulk-publish all your drafts on the MR.
@@ -426,7 +434,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.publish_merge_request_draft_notes(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def bulk_reply_to_discussions(
         project_id: int | str, mr_iid: int, replies: list[dict[str, Any]]
     ) -> dict[str, Any]:
@@ -437,7 +445,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.bulk_reply_to_discussions(project_id, mr_iid, replies)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def bulk_resolve_discussions(
         project_id: int | str,
         mr_iid: int,
@@ -451,7 +459,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.bulk_resolve_discussions(project_id, mr_iid, discussion_ids, resolved)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_merge_request_pipelines(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         List pipelines associated with a merge request.
@@ -460,7 +468,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_merge_request_pipelines(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def resolve_discussion(
         project_id: int | str, mr_iid: int, discussion_id: str, resolved: bool = True
     ) -> dict[str, Any]:
@@ -474,7 +482,7 @@ def register_merge_request_tools(mcp: FastMCP):
             project_id, mr_iid, discussion_id, resolved
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def bundle_merge_request_context(
         project_id: int | str | None = None,
         mr_iid: int | None = None,
@@ -492,7 +500,7 @@ def register_merge_request_tools(mcp: FastMCP):
         p_id, m_iid = resolved
         return await service.bundle_merge_request_context(p_id, m_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def merge_merge_request(
         project_id: int | str,
         mr_iid: int,
@@ -518,7 +526,7 @@ def register_merge_request_tools(mcp: FastMCP):
             merge_when_pipeline_succeeds=merge_when_pipeline_succeeds,
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def rebase_merge_request(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         Rebase a merge request onto the target branch.
@@ -527,7 +535,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.rebase_merge_request(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_merge_request_approvals(project_id: int | str, mr_iid: int) -> dict[str, Any]:
         """
         Check the approval status and required approvals for a merge request.
@@ -536,7 +544,7 @@ def register_merge_request_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_merge_request_approvals(project_id, mr_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def summarize_mr_discussions_locally(
         project_id: int | str | None = None, mr_iid: int | None = None, url: str | None = None
     ) -> dict[str, Any]:
@@ -553,7 +561,7 @@ def register_merge_request_tools(mcp: FastMCP):
         p_id, m_iid = resolved
         return await service.summarize_mr_discussions_locally(p_id, m_iid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def check_mr_privacy_locally(
         project_id: int | str | None = None, mr_iid: int | None = None, url: str | None = None
     ) -> dict[str, Any]:
@@ -570,3 +578,82 @@ def register_merge_request_tools(mcp: FastMCP):
             return resolved
         p_id, m_iid = resolved
         return await service.check_mr_privacy_locally(p_id, m_iid)
+
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
+    async def upload_file_to_project(
+        project_id: int | str,
+        filename: str,
+        file_content_base64: str,
+        content_type: str = "application/octet-stream",
+    ) -> dict[str, Any]:
+        """
+        Upload a file (e.g. screenshot, log, attachment) to a GitLab project.
+        Returns a markdown snippet you can paste directly into any comment or description.
+
+        Parameters:
+          project_id          — numeric ID or "group/project" path
+          filename            — desired filename including extension (e.g. "screenshot.png")
+          file_content_base64 — file bytes encoded as a base64 string
+          content_type        — MIME type (default: application/octet-stream; use "image/png",
+                                "image/jpeg", etc.)
+
+        Workflow:
+          1. Call this tool to upload the file and get back a markdown snippet such as
+             ![screenshot](https://gitlab.example.com/uploads/.../screenshot.png)
+          2. Include that snippet in the 'body' of create_merge_request_note,
+             create_merge_request_discussion, or reply_to_discussion.
+        """
+        try:
+            content = base64.b64decode(file_content_base64, validate=True)
+        except (binascii.Error, ValueError) as e:
+            return {
+                "summary": "Error: Invalid base64 input",
+                "key_findings": [str(e)],
+                "details": {},
+                "next_action": "Ensure the file_content_base64 is valid base64 and try again.",
+            }
+
+        max_size = 10 * 1024 * 1024  # 10 MB
+        if len(content) > max_size:
+            return {
+                "summary": "Error: File too large",
+                "key_findings": [f"Max allowed size is {max_size // (1024 * 1024)} MB"],
+                "details": {"provided_size_bytes": len(content)},
+                "next_action": "Compress the file or split it into smaller parts.",
+            }
+
+        safe_filename = os.path.basename(filename)
+        if not safe_filename:
+            return {
+                "summary": "Error: Invalid filename",
+                "key_findings": ["Filename cannot be empty or contain only path separators"],
+                "details": {},
+                "next_action": "Provide a valid filename (e.g., screenshot.png).",
+            }
+
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        return await service.upload_file_to_project(
+            project_id, safe_filename, content, content_type
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def get_merge_request_attachments(
+        project_id: int | str | None = None,
+        mr_iid: int | None = None,
+        url: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Extract and fetch all image/file attachments embedded in a merge request
+        (description + notes + discussions).
+
+        Returns base64-encoded content for each attachment so images can be displayed inline.
+        Supports full GitLab URL or explicit IDs.
+        """
+        client = await GitLabClient.get_instance()
+        service = GitLabService(client)
+        resolved = resolve_ids_or_fail(service, url, project_id, mr_iid, "mr_iid")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, m_iid = resolved
+        return await service.get_merge_request_attachments(p_id, m_iid)

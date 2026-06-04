@@ -1,7 +1,7 @@
 import asyncio
 import re
 import urllib.parse
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 import structlog
@@ -13,7 +13,8 @@ logger = structlog.get_logger(__name__)
 
 
 class GitLabClient:
-    _instance: Optional["GitLabClient"] = None
+    _instance: "GitLabClient | None" = None
+    _lock: asyncio.Lock = asyncio.Lock()
 
     def __init__(self):
         self.base_url = f"{settings.gitlab_url.rstrip('/')}/api/v4"
@@ -46,9 +47,10 @@ class GitLabClient:
     @classmethod
     async def get_instance(cls) -> "GitLabClient":
         if cls._instance is None:
-            cls._instance = cls()
-            # Proactive warmup in background
-            asyncio.create_task(cls._instance.warmup())
+            async with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+                    asyncio.create_task(cls._instance.warmup())
         return cls._instance
 
     async def warmup(self):
@@ -93,6 +95,12 @@ class GitLabClient:
 
     def _redact_url(self, url: str) -> str:
         return re.sub(r"([?&]private_token=)[^&]+", r"\1[REDACTED]", url)
+
+    def _is_gitlab_host(self, url: str) -> bool:
+        """Ensure a URL belongs to the configured GitLab instance."""
+        parsed = urllib.parse.urlparse(url)
+        gitlab_parsed = urllib.parse.urlparse(settings.gitlab_url)
+        return parsed.netloc == gitlab_parsed.netloc
 
     def parse_gitlab_url(self, url: str) -> dict[str, Any]:
         """
@@ -268,11 +276,20 @@ class GitLabClient:
                     await asyncio.sleep(wait_time)
                     continue
 
+                error_text = e.response.text
+                # Scrub potential secrets from error response before logging
+                error_text = re.sub(
+                    r"private_token=[^&\s]+", "private_token=[REDACTED]", error_text
+                )
+                error_text = re.sub(
+                    r"glpat-[a-zA-Z0-9\-]{20,}", "[REDACTED_GITLAB_TOKEN]", error_text
+                )
+                error_text = re.sub(r"AKIA[0-9A-Z]{16}", "[REDACTED_AWS_KEY]", error_text)
                 logger.error(
                     "gitlab_api_error",
                     status_code=e.response.status_code,
                     endpoint=self._redact_url(endpoint),
-                    error=e.response.text,
+                    error=error_text,
                 )
                 raise
             except (httpx.RequestError, Exception) as e:
@@ -347,11 +364,15 @@ class GitLabClient:
     async def get_current_user(self) -> dict[str, Any]:
         return await self.get("/user")
 
+    async def get_version(self) -> httpx.Response:
+        """Return raw httpx Response for the GitLab /version endpoint."""
+        return await self._request("GET", "/version")
+
     async def list_all_issues(
         self, state: str = "opened", scope: str = "assigned_to_me"
     ) -> list[dict[str, Any]]:
         params = {"state": state, "scope": scope}
-        return await self.get("/issues", params=params)
+        return await self.get_all("/issues", params=params, limit=100)
 
     async def list_projects(
         self,
@@ -403,10 +424,12 @@ class GitLabClient:
         )
 
     async def list_issues(
-        self, project_id: int | str, state: str = "opened"
+        self, project_id: int | str, state: str = "opened", limit: int = 100
     ) -> list[dict[str, Any]]:
-        return await self.get(
-            f"/projects/{self._format_project_id(project_id)}/issues", params={"state": state}
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/issues",
+            params={"state": state},
+            limit=limit,
         )
 
     async def get_issue(self, project_id: int | str, issue_iid: int) -> dict[str, Any]:
@@ -430,11 +453,12 @@ class GitLabClient:
         )
 
     async def list_merge_requests(
-        self, project_id: int | str, state: str = "opened"
+        self, project_id: int | str, state: str = "opened", limit: int = 100
     ) -> list[dict[str, Any]]:
-        return await self.get(
+        return await self.get_all(
             f"/projects/{self._format_project_id(project_id)}/merge_requests",
             params={"state": state},
+            limit=limit,
         )
 
     async def get_merge_request(self, project_id: int | str, mr_iid: int) -> dict[str, Any]:
@@ -490,24 +514,27 @@ class GitLabClient:
         )
 
     async def get_repository_tree(
-        self, project_id: int | str, path: str = "", ref: str = "main"
+        self, project_id: int | str, path: str = "", ref: str | None = None
     ) -> list[dict[str, Any]]:
-        return await self.get(
+        return await self.get_all(
             f"/projects/{self._format_project_id(project_id)}/repository/tree",
-            params={"path": path, "ref": ref},
+            params={"path": path, "ref": ref or "HEAD"},
+            limit=500,
         )
 
     async def get_file_content(
-        self, project_id: int | str, file_path: str, ref: str = "main"
+        self, project_id: int | str, file_path: str, ref: str | None = None
     ) -> dict[str, Any]:
         encoded_path = urllib.parse.quote(file_path, safe="")
         return await self.get(
             f"/projects/{self._format_project_id(project_id)}/repository/files/{encoded_path}",
-            params={"ref": ref},
+            params={"ref": ref or "HEAD"},
         )
 
-    async def list_pipelines(self, project_id: int | str) -> list[dict[str, Any]]:
-        return await self.get(f"/projects/{self._format_project_id(project_id)}/pipelines")
+    async def list_pipelines(self, project_id: int | str, limit: int = 20) -> list[dict[str, Any]]:
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/pipelines", limit=limit
+        )
 
     async def get_pipeline(self, project_id: int | str, pipeline_id: int) -> dict[str, Any]:
         return await self.get(
@@ -515,14 +542,15 @@ class GitLabClient:
         )
 
     async def list_pipeline_jobs(
-        self, project_id: int | str, pipeline_id: int
+        self, project_id: int | str, pipeline_id: int, limit: int = 200
     ) -> list[dict[str, Any]]:
-        return await self.get(
-            f"/projects/{self._format_project_id(project_id)}/pipelines/{pipeline_id}/jobs"
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/pipelines/{pipeline_id}/jobs",
+            limit=limit,
         )
 
     async def search_users(self, search: str) -> list[dict[str, Any]]:
-        return await self.get("/users", params={"search": search})
+        return await self.get_all("/users", params={"search": search}, limit=50)
 
     async def create_branch(self, project_id: int | str, branch: str, ref: str) -> dict[str, Any]:
         data = {"branch": branch, "ref": ref}
@@ -613,8 +641,10 @@ class GitLabClient:
         params = {}
         if ref_name:
             params["ref_name"] = ref_name
-        return await self.get(
-            f"/projects/{self._format_project_id(project_id)}/repository/commits", params=params
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/repository/commits",
+            params=params,
+            limit=500,
         )
 
     async def get_commit_details(self, project_id: int | str, sha: str) -> dict[str, Any]:
@@ -623,16 +653,19 @@ class GitLabClient:
         )
 
     async def get_file_blame(
-        self, project_id: int | str, file_path: str, ref: str = "main"
+        self, project_id: int | str, file_path: str, ref: str | None = None
     ) -> list[dict[str, Any]]:
         encoded_path = urllib.parse.quote(file_path, safe="")
-        return await self.get(
+        return await self.get_all(
             f"/projects/{self._format_project_id(project_id)}/repository/files/{encoded_path}/blame",
-            params={"ref": ref},
+            params={"ref": ref or "HEAD"},
+            limit=1000,
         )
 
     async def list_project_labels(self, project_id: int | str) -> list[dict[str, Any]]:
-        return await self.get(f"/projects/{self._format_project_id(project_id)}/labels")
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/labels", limit=500
+        )
 
     async def create_project_label(
         self, project_id: int | str, name: str, color: str, description: str | None = None
@@ -657,7 +690,9 @@ class GitLabClient:
         )
 
     async def list_project_environments(self, project_id: int | str) -> list[dict[str, Any]]:
-        return await self.get(f"/projects/{self._format_project_id(project_id)}/environments")
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/environments", limit=100
+        )
 
     async def merge_merge_request(
         self, project_id: int | str, mr_iid: int, data: dict[str, Any] | None = None
@@ -783,7 +818,7 @@ class GitLabClient:
     async def list_merge_request_pipelines(
         self, project_id: int | str, mr_iid: int
     ) -> list[dict[str, Any]]:
-        return await self.get(
+        return await self.get_all(
             f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/pipelines"
         )
 
@@ -793,8 +828,10 @@ class GitLabClient:
         params = {}
         if query:
             params["query"] = query
-        return await self.get(
-            f"/projects/{self._format_project_id(project_id)}/members", params=params
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/members",
+            params=params,
+            limit=200,
         )
 
     async def create_batch_commit(
@@ -810,31 +847,78 @@ class GitLabClient:
         )
         return response.content
 
+    async def get_repository_file_raw(
+        self, project_id: int | str, file_path: str, ref: str | None = None
+    ) -> str:
+        """Fetch raw file content via the GitLab API repository/files endpoint."""
+        encoded_path = urllib.parse.quote(file_path, safe="")
+        response = await self._request(
+            "GET",
+            f"/projects/{self._format_project_id(project_id)}/repository/files/{encoded_path}/raw",
+            params={"ref": ref or "HEAD"},
+        )
+        return response.text
+
     async def get_raw_file(self, raw_url: str) -> str:
         """Fetch raw file content from a GitLab /-/raw/ URL.
         Accepts full URL or a path relative to the GitLab root.
         Returns the raw text content.
         """
-        response = await self._request("GET", self._build_absolute_url(raw_url))
+        absolute_url = self._build_absolute_url(raw_url)
+        if not self._is_gitlab_host(absolute_url):
+            raise ValueError(
+                f"Raw file URL host does not match configured GitLab instance: {raw_url}"
+            )
+        response = await self._request("GET", absolute_url)
         return response.text
 
-    async def fetch_upload(self, upload_url: str) -> tuple[bytes, str]:
+    async def upload_file(
+        self, project_id: int | str, filename: str, content: bytes, content_type: str
+    ) -> dict[str, Any]:
+        """Upload a file to a project and return the GitLab upload metadata (url, markdown, alt)."""
+        files = {"file": (filename, content, content_type)}
+        response = await self._request(
+            "POST",
+            f"/projects/{self._format_project_id(project_id)}/uploads",
+            files=files,
+        )
+        return response.json()
+
+    async def fetch_upload(
+        self, upload_url: str, max_size_bytes: int = 5 * 1024 * 1024
+    ) -> tuple[bytes, str]:
         """Fetch a GitLab upload attachment with authentication.
         Accepts full URL or path relative to the GitLab root (e.g. /uploads/<hash>/file.png).
         Returns (content_bytes, content_type).
+        Raises ValueError if the file exceeds max_size_bytes.
         """
         upload_url = self._build_absolute_url(upload_url)
+
+        if not self._is_gitlab_host(upload_url):
+            raise ValueError(
+                f"Upload URL host does not match configured GitLab instance: {upload_url}"
+            )
 
         # Append private_token as query param — GitLab web routes don't accept PRIVATE-TOKEN header
         auth_url = self._append_private_token(upload_url)
 
-        try:
-            # Use web_client (no PRIVATE-TOKEN header) so GitLab web-route auth isn't confused
-            response = await self.web_client.get(auth_url)
+        async def _fetch(url: str) -> tuple[bytes, str]:
+            response = await self.web_client.get(url, follow_redirects=True)
             response.raise_for_status()
-            return response.content, response.headers.get(
-                "content-type", "application/octet-stream"
-            )
+            content_length = response.headers.get("content-length")
+            if content_length and int(content_length) > max_size_bytes:
+                raise ValueError(
+                    f"File size {content_length} bytes exceeds max {max_size_bytes} bytes"
+                )
+            content = b""
+            async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+                content += chunk
+                if len(content) > max_size_bytes:
+                    raise ValueError(f"File exceeds max allowed size of {max_size_bytes} bytes")
+            return content, response.headers.get("content-type", "application/octet-stream")
+
+        try:
+            return await _fetch(auth_url)
         except httpx.HTTPStatusError as e:
             # If CDN redirect strips auth and returns 401/403, retry without any auth
             if e.response.status_code in (401, 403):
@@ -843,11 +927,7 @@ class GitLabClient:
                     url=self._redact_url(auth_url),
                     status_code=e.response.status_code,
                 )
-                response = await self.web_client.get(upload_url)
-                response.raise_for_status()
-                return response.content, response.headers.get(
-                    "content-type", "application/octet-stream"
-                )
+                return await _fetch(upload_url)
             raise
 
     async def cancel_pipeline(self, project_id: int | str, pipeline_id: int) -> dict[str, Any]:
@@ -878,7 +958,9 @@ class GitLabClient:
         )
 
     async def list_project_variables(self, project_id: int | str) -> list[dict[str, Any]]:
-        return await self.get(f"/projects/{self._format_project_id(project_id)}/variables")
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/variables", limit=500
+        )
 
     async def create_project_variable(
         self, project_id: int | str, data: dict[str, Any]
@@ -913,8 +995,10 @@ class GitLabClient:
             params["severity"] = severity
         if report_type:
             params["report_type"] = report_type
-        return await self.get(
-            f"/projects/{self._format_project_id(project_id)}/vulnerability_findings", params=params
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/vulnerability_findings",
+            params=params,
+            limit=500,
         )
 
     async def get_vulnerability_details(
@@ -928,10 +1012,14 @@ class GitLabClient:
         """
         List dependencies for a project (Dependency Scanning).
         """
-        return await self.get_all(f"/projects/{self._format_project_id(project_id)}/dependencies")
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/dependencies", limit=500
+        )
 
     async def list_audit_events(self, project_id: int | str) -> list[dict[str, Any]]:
         """
         List audit events for a project.
         """
-        return await self.get_all(f"/projects/{self._format_project_id(project_id)}/audit_events")
+        return await self.get_all(
+            f"/projects/{self._format_project_id(project_id)}/audit_events", limit=200
+        )

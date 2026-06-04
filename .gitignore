@@ -49,6 +49,7 @@ Thumbs.db
 # MCP / AI CLI local configs
 .mcp/
 .claude/
+REASONIX.md
 
 # pyenv
 .python-version

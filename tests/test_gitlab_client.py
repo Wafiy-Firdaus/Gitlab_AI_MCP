@@ -3,6 +3,14 @@ import pytest
 from gitlab.client import GitLabClient
 
 
+@pytest.fixture(autouse=True)
+def _reset_singleton():
+    """Reset GitLabClient singleton between tests to prevent state leakage."""
+    GitLabClient._instance = None
+    yield
+    GitLabClient._instance = None
+
+
 def test_format_project_id_path_encodes_slashes():
     client = GitLabClient()
     assert client._format_project_id("group/subgroup/project") == "group%2Fsubgroup%2Fproject"
@@ -107,8 +115,163 @@ def test_web_client_exists_without_auth_header():
     assert "PRIVATE-TOKEN" not in client.web_client.headers
 
 
+class TestHostValidation:
+    def test_is_gitlab_host_accepts_matching_host(self):
+        client = GitLabClient()
+        assert client._is_gitlab_host("https://gitlab.example.com/uploads/file.png") is True
+
+    def test_is_gitlab_host_rejects_different_host(self):
+        client = GitLabClient()
+        assert client._is_gitlab_host("https://attacker.com/uploads/file.png") is False
+
+    def test_is_gitlab_host_rejects_subdomain(self):
+        client = GitLabClient()
+        assert client._is_gitlab_host("https://evil.gitlab.example.com/uploads/file.png") is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_upload_rejects_external_url():
+    client = GitLabClient()
+    with pytest.raises(ValueError, match="does not match configured GitLab instance"):
+        await client.fetch_upload("https://attacker.com/exfil.png")
+
+
+@pytest.mark.asyncio
+async def test_get_raw_file_rejects_external_url():
+    client = GitLabClient()
+    with pytest.raises(ValueError, match="does not match configured GitLab instance"):
+        await client.get_raw_file("https://attacker.com/raw/file.txt")
+
+
 @pytest.mark.asyncio
 async def test_aexit_calls_aclose():
     client = GitLabClient()
     # Just verify aclose cleans up both clients without error
     await client.aclose()
+
+
+class TestRetryLogic:
+    @pytest.mark.asyncio
+    async def test_request_retries_on_429(self, monkeypatch):
+        import httpx
+
+        client = GitLabClient()
+        call_count = 0
+
+        async def fake_request(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                response = httpx.Response(429, request=httpx.Request("GET", "https://example.com"))
+                raise httpx.HTTPStatusError(
+                    "Rate limited", request=response.request, response=response
+                )
+            return httpx.Response(
+                200, json={"ok": True}, request=httpx.Request("GET", "https://example.com")
+            )
+
+        monkeypatch.setattr(client.client, "request", fake_request)
+
+        # Patch sleep to avoid delays
+        async def _noop_sleep(x):
+            pass
+
+        monkeypatch.setattr("asyncio.sleep", _noop_sleep)
+
+        result = await client._request("GET", "/test")
+        assert result.status_code == 200
+        assert call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_request_retries_on_500(self, monkeypatch):
+        import httpx
+
+        client = GitLabClient()
+        call_count = 0
+
+        async def fake_request(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                response = httpx.Response(503, request=httpx.Request("GET", "https://example.com"))
+                raise httpx.HTTPStatusError(
+                    "Unavailable", request=response.request, response=response
+                )
+            return httpx.Response(
+                200, json={"ok": True}, request=httpx.Request("GET", "https://example.com")
+            )
+
+        monkeypatch.setattr(client.client, "request", fake_request)
+
+        async def _noop_sleep(x):
+            pass
+
+        monkeypatch.setattr("asyncio.sleep", _noop_sleep)
+
+        result = await client._request("GET", "/test")
+        assert result.status_code == 200
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_request_does_not_retry_on_400(self, monkeypatch):
+        import httpx
+
+        client = GitLabClient()
+        call_count = 0
+
+        async def fake_request(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(400, request=httpx.Request("GET", "https://example.com"))
+            raise httpx.HTTPStatusError("Bad Request", request=response.request, response=response)
+
+        monkeypatch.setattr(client.client, "request", fake_request)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await client._request("GET", "/test")
+        assert call_count == 1
+
+
+class TestPagination:
+    @pytest.mark.asyncio
+    async def test_get_all_follows_next_page(self, monkeypatch):
+        import httpx
+
+        client = GitLabClient()
+        page = 0
+
+        async def fake_request(method, url, **kwargs):
+            nonlocal page
+            page += 1
+            if page == 1:
+                headers = {"X-Next-Page": "2"}
+                data = [{"id": 1}, {"id": 2}]
+            else:
+                headers = {}
+                data = [{"id": 3}]
+            return httpx.Response(
+                200, json=data, headers=headers, request=httpx.Request("GET", "https://example.com")
+            )
+
+        monkeypatch.setattr(client.client, "request", fake_request)
+
+        results = await client.get_all("/items")
+        assert len(results) == 3
+        assert results[2]["id"] == 3
+
+    @pytest.mark.asyncio
+    async def test_get_all_respects_limit(self, monkeypatch):
+        import httpx
+
+        client = GitLabClient()
+
+        async def fake_request(method, url, **kwargs):
+            data = [{"id": i} for i in range(1, 101)]
+            return httpx.Response(
+                200, json=data, request=httpx.Request("GET", "https://example.com")
+            )
+
+        monkeypatch.setattr(client.client, "request", fake_request)
+
+        results = await client.get_all("/items", limit=5)
+        assert len(results) == 5

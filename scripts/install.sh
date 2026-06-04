@@ -319,10 +319,63 @@ register_gemini() {
   fi
 }
 
+register_reasonix() {
+  if command -v reasonix >/dev/null 2>&1; then
+    info "Reasonix detected."
+    local REASONIX_CONFIG="${HOME}/.reasonix/config.json"
+    local TEMPLATE="${PROJECT_ROOT}/mcp-configs/reasonix.global.json"
+
+    if [ -f "$REASONIX_CONFIG" ]; then
+      info "Reasonix config found at ${REASONIX_CONFIG}"
+
+      if command -v jq >/dev/null 2>&1; then
+        # Use jq to add/update the gitlab-ai-mcp entry with the real path
+        local tmp_config="${REASONIX_CONFIG}.tmp.$$"
+        if jq --arg cmd "${MCP_PATH}" \
+               '.mcpServers."gitlab-ai-mcp" = {"command": $cmd, "args": []}' \
+               "$REASONIX_CONFIG" > "$tmp_config" 2>/dev/null; then
+          mv "$tmp_config" "$REASONIX_CONFIG"
+          ok "Registered with Reasonix"
+          REGISTERED+=("Reasonix")
+        else
+          rm -f "$tmp_config"
+          warn "Failed to update Reasonix config — merge manually below"
+          echo "     \"gitlab-ai-mcp\": {"
+          echo "       \"command\": \"${MCP_PATH}\","
+          echo "       \"args\": []"
+          echo "     }"
+          FAILED+=("Reasonix")
+        fi
+      else
+        info "jq not found — printing manual registration instructions"
+        echo "   To register, add this to the \"mcpServers\" block in ${REASONIX_CONFIG}:"
+        echo ""
+        echo "     \"gitlab-ai-mcp\": {"
+        echo "       \"command\": \"${MCP_PATH}\","
+        echo "       \"args\": []"
+        echo "     }"
+        echo ""
+        echo "   Or copy the template and merge manually:"
+        echo "     cat ${TEMPLATE}"
+        REGISTERED+=("Reasonix (manual)")
+      fi
+    else
+      warn "Reasonix config not found at ${REASONIX_CONFIG}"
+      info "Creating from template with real path..."
+      mkdir -p "${HOME}/.reasonix"
+      sed "s|/ABSOLUTE/PATH/TO/Gitlab_AI_MCP|${PROJECT_ROOT}|g" \
+        "$TEMPLATE" > "$REASONIX_CONFIG"
+      ok "Created Reasonix config at ${REASONIX_CONFIG}"
+      REGISTERED+=("Reasonix")
+    fi
+  fi
+}
+
 register_kimi
 register_claude
 register_codex
 register_gemini
+register_reasonix
 
 # ---------------------------------------------------------------------------
 # 6. Summary

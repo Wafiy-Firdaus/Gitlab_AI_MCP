@@ -1,11 +1,12 @@
-import logging
 import re
+from typing import Optional
 
 import httpx
+import structlog
 
 from config import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LocalAIService:
@@ -14,18 +15,33 @@ class LocalAIService:
     to perform pre-processing, log triage, and secret scrubbing.
     """
 
-    def __init__(self):
-        self.base_url = settings.local_ai_url.rstrip("/")
-        self.model = settings.local_ai_model
-        self.client = httpx.AsyncClient(timeout=60.0)
+    _instance: Optional["LocalAIService"] = None
+    base_url: str
+    model: str
+    client: httpx.AsyncClient
 
-    async def scrub_secrets(self, text: str) -> str:
+    def __new__(cls) -> "LocalAIService":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.base_url = settings.local_ai_url.rstrip("/")
+            cls._instance.model = settings.local_ai_model
+            cls._instance.client = httpx.AsyncClient(timeout=60.0)
+        return cls._instance
+
+    @classmethod
+    async def aclose(cls) -> None:
+        """Close the shared httpx client. Call on shutdown."""
+        if cls._instance is not None:
+            await cls._instance.client.aclose()
+            cls._instance = None
+
+    def scrub_secrets(self, text: str) -> str:
         """
         Redacts sensitive patterns (IPs, tokens, keys) locally
         to ensure privacy before any data reaches an external AI.
         """
-        # Redact IPv4
-        text = re.sub(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "[REDACTED_IP]", text)
+        # Run specific high-confidence patterns FIRST to avoid generic regex overlap
+
         # Redact GitLab Tokens
         text = re.sub(r"glpat-[a-zA-Z0-9\-]{20,}", "[REDACTED_GITLAB_TOKEN]", text)
         # Redact AWS Access Keys
@@ -37,15 +53,49 @@ class LocalAIService:
             text,
             flags=re.IGNORECASE,
         )
-        # Redact generic "password" or "token" assignments
+        # Redact JWT tokens
         text = re.sub(
-            r"(password|passwd|token|secret|key|auth)\s*[:=]\s*[^\s]{6,}",
-            r"\1: [REDACTED]",
+            r"eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*",
+            "[REDACTED_JWT]",
+            text,
+        )
+        # Redact PEM/SSH private key headers
+        text = re.sub(
+            r"-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+            "[REDACTED_PRIVATE_KEY]",
+            text,
+        )
+        # Redact GCP service account keys
+        text = re.sub(
+            r"\"type\":\s*\"service_account\".*?\"private_key\":\s*\"-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----\"",
+            '"type": "service_account", ... [REDACTED_GCP_KEY]',
+            text,
+            flags=re.DOTALL,
+        )
+        # Redact private IPv4 ranges (avoids version numbers like 1.2.3.4)
+        text = re.sub(
+            r"\b(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b",
+            "[REDACTED_IP]",
+            text,
+        )
+
+        # Redact generic "password" or "token" assignments LAST,
+        # but avoid consuming values that look like known structured tokens
+        # or that have already been redacted by earlier patterns
+        def _generic_redact(m: re.Match[str]) -> str:
+            val = m.group(2)
+            if val.startswith(("glpat-", "AKIA", "eyJ", "-----BEGIN")):
+                return m.group(0)
+            if val.startswith("[REDACTED"):
+                return m.group(0)
+            return f"{m.group(1)}: [REDACTED]"
+
+        text = re.sub(
+            r"(password|passwd|token|secret|key|auth)\s*[:=]\s*([^\s]{6,})",
+            _generic_redact,
             text,
             flags=re.IGNORECASE,
         )
-        # Redact long hex strings (potential keys)
-        text = re.sub(r"\b[a-fA-F0-9]{32,}\b", "[REDACTED_HEX_TOKEN]", text)
 
         return text
 
@@ -55,7 +105,7 @@ class LocalAIService:
         """
         try:
             # Scrub context first (privacy first!)
-            clean_context = await self.scrub_secrets(context)
+            clean_context = self.scrub_secrets(context)
 
             # Construct the Ollama payload
             payload = {

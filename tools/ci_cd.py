@@ -4,10 +4,12 @@ from mcp.server.fastmcp import FastMCP
 
 from gitlab.client import GitLabClient
 from services.gitlab_service import GitLabService
+from tools._annotations import READ_ONLY, WRITE_DESTRUCTIVE, WRITE_IDEMPOTENT
+from tools._utils import resolve_ids_or_fail
 
 
-def register_ci_cd_tools(mcp: FastMCP):
-    @mcp.tool()
+def register_ci_cd_tools(mcp: FastMCP) -> None:
+    @mcp.tool(annotations=READ_ONLY)
     async def list_project_pipelines(project_id: int | str) -> dict[str, Any]:
         """
         List recent pipelines for a project.
@@ -16,7 +18,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_pipelines(project_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_pipeline_details(project_id: int | str, pipeline_id: int) -> dict[str, Any]:
         """
         Get detailed information about a specific pipeline.
@@ -25,7 +27,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_pipeline_details(project_id, pipeline_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def trigger_pipeline(
         project_id: int | str, ref: str, variables: list[dict[str, str]] | None = None
     ) -> dict[str, Any]:
@@ -37,7 +39,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.trigger_pipeline(project_id, ref, variables)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_pipeline_jobs(project_id: int | str, pipeline_id: int) -> dict[str, Any]:
         """
         List all jobs for a specific pipeline.
@@ -46,7 +48,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_pipeline_jobs(project_id, pipeline_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_job_log(project_id: int | str, job_id: int) -> dict[str, Any]:
         """
         Get the tail (last 100 lines) of a job's trace log.
@@ -55,7 +57,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_job_log(project_id, job_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def analyze_failed_job(
         project_id: int | str | None = None, job_id: int | None = None, url: str | None = None
     ) -> dict[str, Any]:
@@ -65,12 +67,13 @@ def register_ci_cd_tools(mcp: FastMCP):
         """
         client = await GitLabClient.get_instance()
         service = GitLabService(client)
-        p_id, j_id = service.resolve_url_or_ids(url, project_id, job_id)
-        if p_id is None or j_id is None:
-            return {"error": "Missing project_id/job_id or valid URL"}
+        resolved = resolve_ids_or_fail(service, url, project_id, job_id, "job_id")
+        if isinstance(resolved, dict):
+            return resolved
+        p_id, j_id = resolved
         return await service.analyze_failed_job(p_id, j_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_pipeline_bridges(project_id: int | str, pipeline_id: int) -> dict[str, Any]:
         """
         List bridge jobs (parent/child pipelines) for a specific pipeline.
@@ -79,7 +82,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_pipeline_bridges(project_id, pipeline_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def retry_job(project_id: int | str, job_id: int) -> dict[str, Any]:
         """
         Retry a specific CI/CD job.
@@ -88,7 +91,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.retry_job(project_id, job_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def retry_pipeline(project_id: int | str, pipeline_id: int) -> dict[str, Any]:
         """
         Retry all failed jobs in a pipeline.
@@ -97,7 +100,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.retry_pipeline(project_id, pipeline_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def cancel_pipeline(project_id: int | str, pipeline_id: int) -> dict[str, Any]:
         """
         Cancel a running pipeline.
@@ -106,7 +109,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.cancel_pipeline(project_id, pipeline_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def cancel_job(project_id: int | str, job_id: int) -> dict[str, Any]:
         """
         Cancel a running CI/CD job.
@@ -115,7 +118,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.cancel_job(project_id, job_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def play_job(project_id: int | str, job_id: int) -> dict[str, Any]:
         """
         Trigger a manual CI/CD job to run.
@@ -124,7 +127,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.play_job(project_id, job_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_job_artifact_file(
         project_id: int | str, job_id: int, artifact_path: str
     ) -> dict[str, Any]:
@@ -135,7 +138,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_job_artifact_file(project_id, job_id, artifact_path)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def get_job_artifacts_archive(project_id: int | str, job_id: int) -> dict[str, Any]:
         """
         Download the entire artifacts archive (zip) for a job.
@@ -144,7 +147,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.get_job_artifacts_archive(project_id, job_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_project_environments(project_id: int | str) -> dict[str, Any]:
         """
         List all deployment environments for a project.
@@ -153,7 +156,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_project_environments(project_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def triage_job_log_locally(project_id: int | str, job_id: int) -> dict[str, Any]:
         """
         [PHASE 2.1] Fetch a large job log and use a LOCAL AI (Ollama) to find the error.
@@ -163,7 +166,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.triage_job_log_locally(project_id, job_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def list_project_variables(project_id: int | str) -> dict[str, Any]:
         """
         List all CI/CD variables defined for a project.
@@ -172,7 +175,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.list_project_variables(project_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_DESTRUCTIVE)
     async def create_project_variable(
         project_id: int | str,
         key: str,
@@ -191,7 +194,7 @@ def register_ci_cd_tools(mcp: FastMCP):
             project_id, key, value, variable_type, protected, masked
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def update_project_variable(
         project_id: int | str,
         key: str,
@@ -209,7 +212,7 @@ def register_ci_cd_tools(mcp: FastMCP):
             project_id, key, value, variable_type, protected, masked
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITE_IDEMPOTENT)
     async def delete_project_variable(project_id: int | str, key: str) -> dict[str, Any]:
         """
         Delete a CI/CD variable from a project.
@@ -218,7 +221,7 @@ def register_ci_cd_tools(mcp: FastMCP):
         service = GitLabService(client)
         return await service.delete_project_variable(project_id, key)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def bundle_pipeline_context(project_id: int | str, pipeline_id: int) -> dict[str, Any]:
         """
         High-performance tool that bundles pipeline details, jobs, and failure analysis.

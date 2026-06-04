@@ -23,7 +23,7 @@ An optional Ollama sidecar enables local AI triage of job logs, secrets scanning
 | Runtime | Python 3.12+ |
 | MCP Framework | `mcp[cli]>=1.2.1` (FastMCP) |
 | HTTP Client | `httpx[http2]>=0.27.0` (async, HTTP/2, connection pooling) |
-| Validation/Config | `pydantic>=2.6.0`, `pydantic-settings>=2.2.0` |
+| Validation/Config | `pydantic>=2.6.0`, `pydantic-settings>=2.2.0`, `python-dotenv>=1.0.1` |
 | Logging | `structlog>=24.1.0` (JSON in production, console in debug) |
 | CLI Output | `rich>=13.7.0` |
 | Build Backend | `hatchling` |
@@ -34,7 +34,7 @@ Key configuration files:
 - `mypy.ini` — Type checker configuration (`disallow_untyped_defs = False`, module-specific overrides for `warn_return_any`)
 - `docker-compose.yml` — Base stack (gitlab-ai-mcp + optional ollama profile)
 - `docker-compose.gpu.yml` — NVIDIA GPU override for Ollama
-- `Dockerfile` — `python:3.12-slim` based image
+- `Dockerfile` — `python:3.12-slim` based image, runs as non-root `appuser`
 - `.env` — Runtime settings (see `.env.example` for template)
 
 ---
@@ -53,21 +53,26 @@ services/
   local_ai_service.py      — Ollama client; scrubs secrets before sending; used by triage/summarise/privacy tools
   review_digest.py         — Pure, no-I/O helpers for normalising MR discussions and building digests
 tools/                     — One file per domain; each registers handlers with mcp via register_*_tools(mcp)
+  _annotations.py          — Pre-built MCP ToolAnnotations: READ_ONLY, WRITE_IDEMPOTENT, WRITE_DESTRUCTIVE
   _utils.py                — Shared helpers (URL resolution, error formatting)
   exceptions.py            — Structured error types for tool handlers (GitLabToolError, MissingIdentifierError, GitLabApiError)
-  ci_cd.py
-  issues.py
-  merge_requests.py
-  projects.py
-  repository.py
-  search.py
-  security.py
+  ci_cd.py                 — Pipelines, jobs, bridges, variables, artifacts, triggers
+  issues.py                — Issues, notes, discussions, labels, triage
+  merge_requests.py        — MRs, diffs, discussions, approvals, drafts, reviews, merge, rebase
+  projects.py              — Projects, groups, members, environments, intelligence bundles
+  repository.py            — Files, branches, tags, commits, blame, batch commits, raw files
+  search.py                — Code search, global search, user search
+  security.py              — Vulnerability findings, dependencies, audit events
 tests/                     — pytest unit tests (no network required)
   conftest.py              — Bootstraps test env with dummy GITLAB_URL and GITLAB_TOKEN
   test_gitlab_client.py    — Client utility tests (URL parsing, project ID encoding)
+  test_gitlab_service.py   — Service layer tests
   test_review_digest.py    — Review digest pure-function tests
   test_diff_position.py    — Async diff position builder tests
+  test_utils.py            — Utility helper tests
+  test_version.py          — Version import test
 scripts/
+  _common.sh               — Shared shell utilities used by other scripts
   run_mcp.sh               — Launcher used by all AI CLIs; checks .env, auto-starts container, execs server.py
   install.sh               — Interactive installer (validates token, builds, registers)
   quick-install.sh         — One-liner entrypoint (clone + run install.sh)
@@ -75,7 +80,7 @@ scripts/
   status.sh                — Container health, GitLab connectivity, AI CLI registrations
   logs.sh                  — Tail container logs
   uninstall.sh             — Clean removal (stop container + unregister)
-mcp-configs/               — Global MCP config templates for Kimi, Claude, Codex, Gemini
+mcp-configs/               — Global MCP config templates for Kimi, Claude, Codex, Gemini, Reasonix
 .github/workflows/
   ci.yml                   — GitHub Actions: ruff lint/format check, mypy, pytest, smoke test, docker-smoke
   docker.yml               — GitHub Actions: build and push image to GHCR on version tags
@@ -164,6 +169,16 @@ The central `_request()` method retries on:
 - Network/request errors
 
 Wait time uses exponential backoff: `retry_delay * (2 ** attempt)`.
+
+### MCP Tool Annotations
+
+Every tool is decorated with annotation constants from `tools/_annotations.py`:
+
+- `READ_ONLY` — No side-effects; safe for auto-execution.
+- `WRITE_IDEMPOTENT` — Mutates state; repeating with same params produces the same result (safe to retry).
+- `WRITE_DESTRUCTIVE` — Mutates state; each call may produce a new side-effect (creates, triggers, posts).
+
+These are optional metadata — clients that don't support them silently ignore the fields.
 
 ### Local AI (Optional)
 
@@ -302,13 +317,14 @@ All settings are read from `.env` (see `.env.example` for template):
 - **Secret Scrubbing**: `LocalAIService.scrub_secrets()` redacts sensitive patterns before any data is sent to the local Ollama model.
 - **Upload Auth Fallback**: `fetch_upload()` appends the private token as a query parameter for GitLab upload routes (which do not accept the `PRIVATE-TOKEN` header) and falls back to anonymous access if CDN redirects strip auth.
 - **No External AI Calls**: All AI-powered features (triage, summarisation, privacy scan) use the locally-hosted Ollama instance. No data is sent to third-party AI APIs.
+- **Container Security**: The Docker image runs as a non-root `appuser` for least-privilege execution.
 
 ---
 
 ## Adding a New Tool
 
 1. Pick the right domain file in `tools/` (or create one if the domain is new).
-2. Add an async handler that calls `GitLabService`; decorate with `@mcp.tool()`.
+2. Add an async handler that calls `GitLabService`; decorate with `@mcp.tool(annotations=...)`. Use the appropriate constant from `tools/_annotations.py`.
 3. Register the handler inside `register_*_tools(mcp)` in the same file.
 4. If the operation needs a new GitLab API call, add a method to `GitLabClient` first, then expose it via `GitLabService`.
 5. Add a unit test in `tests/` (mock `httpx` responses; no live GitLab required).
@@ -324,5 +340,5 @@ The project is designed to run as a **global** MCP server inside a Docker contai
 - **Base image**: `python:3.12-slim`
 - **Pre-built images**: Published to `ghcr.io/wafiy-firdaus/gitlab-ai-mcp:latest` on version tags
 - **Launcher**: `scripts/run_mcp.sh` is path-agnostic and auto-starts the container before exec'ing `server.py`
-- **AI CLI Registration**: `scripts/install.sh` detects Kimi, Claude, Codex, and Gemini CLIs and registers the server globally
+- **AI CLI Registration**: `scripts/install.sh` detects Kimi, Claude, Codex, Gemini, and Reasonix CLIs and registers the server globally
 - **Ollama Sidecar**: Optional; enabled via `--profile ollama` in Docker Compose. GPU support via `docker-compose.gpu.yml`

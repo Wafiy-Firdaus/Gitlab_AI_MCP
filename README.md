@@ -87,6 +87,14 @@ codex mcp add gitlab-ai-mcp -- $(pwd)/scripts/run_mcp.sh
 
 # Gemini
 gemini mcp add gitlab-ai-mcp -- $(pwd)/scripts/run_mcp.sh
+
+# Reasonix (manual — Reasonix configures MCP servers via its config file)
+mkdir -p ~/.reasonix
+# If ~/.reasonix/config.json already exists, merge the mcpServers block manually.
+# If it does NOT exist, copy the template:
+cp mcp-configs/reasonix.global.json ~/.reasonix/config.json
+# Then edit the command path in ~/.reasonix/config.json to point to
+# $(pwd)/scripts/run_mcp.sh
 ```
 
 Or copy a template from [`mcp-configs/`](./mcp-configs/) to your global config location.
@@ -158,6 +166,7 @@ Then open any project in your AI CLI and check that the server is connected:
 | Claude | `claude mcp list` or `/mcp` inside the shell |
 | Codex | `codex mcp list` |
 | Gemini | `gemini mcp list` or `/mcp` inside the shell |
+| Reasonix | `reasonix mcp list` or `/mcp` inside the shell |
 
 ---
 

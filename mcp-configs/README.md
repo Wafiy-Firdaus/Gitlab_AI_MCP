@@ -27,6 +27,9 @@ codex mcp add gitlab-ai-mcp -- "$MCP_PATH"
 
 # Gemini
 gemini mcp add gitlab-ai-mcp -- "$MCP_PATH"
+
+# Reasonix (no CLI command — configure via ~/.reasonix/config.json)
+# See the Reasonix section under Manual Setup below.
 ```
 
 ---
@@ -136,6 +139,27 @@ cp mcp-configs/gemini.global.json ~/.gemini/settings.json
 
 ---
 
+### Reasonix
+
+| Item | Value |
+|------|-------|
+| **File** | `~/.reasonix/config.json` |
+| **Format** | JSON |
+| **Template** | [`reasonix.global.json`](./reasonix.global.json) |
+
+Reasonix does not have a `reasonix mcp add` CLI command — MCP servers are configured directly in `~/.reasonix/config.json` under the `mcpServers` key.
+
+```bash
+mkdir -p ~/.reasonix
+# If ~/.reasonix/config.json already exists, merge the "gitlab-ai-mcp" entry
+# from the template into the "mcpServers" block — do NOT overwrite the file.
+# If it does NOT exist, you can copy directly:
+cp mcp-configs/reasonix.global.json ~/.reasonix/config.json
+# edit ~/.reasonix/config.json and replace the placeholder path
+```
+
+---
+
 ## Verifying the connection
 
 After configuring, open any project (not just `Gitlab_AI_MCP`) and run your AI CLI's MCP list command:
@@ -146,5 +170,6 @@ After configuring, open any project (not just `Gitlab_AI_MCP`) and run your AI C
 | Claude | `/mcp` inside the shell, or `claude mcp list` |
 | Codex | `codex mcp list` |
 | Gemini | `/mcp` inside the shell, or `gemini mcp list` |
+| Reasonix | `/mcp` inside the shell, or `reasonix mcp list` |
 
 You should see `gitlab-ai-mcp` listed.

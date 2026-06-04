@@ -1,11 +1,15 @@
 import logging
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import structlog
 from mcp.server.fastmcp import FastMCP
 
 from _version import __version__
 from config import settings
+from gitlab.client import GitLabClient
+from services.local_ai_service import LocalAIService
 from tools.ci_cd import register_ci_cd_tools
 from tools.issues import register_issue_tools
 from tools.merge_requests import register_merge_request_tools
@@ -13,6 +17,24 @@ from tools.projects import register_project_tools
 from tools.repository import register_repository_tools
 from tools.search import register_search_tools
 from tools.security import register_security_tools
+
+
+@asynccontextmanager
+async def app_lifespan(server: FastMCP) -> AsyncIterator[dict]:
+    """Manage application lifecycle: warmup on startup, cleanup on shutdown."""
+    # Startup: GitLabClient singleton is initialized lazily on first get_instance()
+    yield {}
+    # Shutdown: close all async clients
+    try:
+        client = await GitLabClient.get_instance()
+        await client.aclose()
+    except Exception:
+        pass
+    try:
+        await LocalAIService.aclose()
+    except Exception:
+        pass
+
 
 # Configure structured logging
 structlog.configure(
