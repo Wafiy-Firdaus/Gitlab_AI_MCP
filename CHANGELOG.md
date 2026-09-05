@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-09-05
+
+### Security
+
+- Validate every upload redirect target against the configured GitLab host before
+  following it or forwarding the private token.
+
+### Fixed
+
+- Paginate merge request diffs so large reviews include all changed files.
+- Retry only transient HTTP request errors instead of masking programming errors.
+- Declare the `dev` optional dependency group so `pip install -e ".[dev]"` installs
+  the complete CI and development toolchain.
+
 ## [1.0.0] - 2026-06-04
 
 ### Added

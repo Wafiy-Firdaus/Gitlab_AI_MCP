@@ -37,7 +37,7 @@ class GitLabClient:
         # Dedicated client for web routes (uploads, raw files) without PRIVATE-TOKEN header
         self.web_client = httpx.AsyncClient(
             timeout=httpx.Timeout(60.0, connect=30.0),
-            follow_redirects=True,
+            follow_redirects=False,
             http2=True,
             limits=httpx.Limits(
                 max_keepalive_connections=20, max_connections=100, keepalive_expiry=60.0
@@ -292,7 +292,7 @@ class GitLabClient:
                     error=error_text,
                 )
                 raise
-            except (httpx.RequestError, Exception) as e:
+            except httpx.RequestError as e:
                 if attempt < max_retries:
                     wait_time = retry_delay * (2**attempt)
                     logger.warning(
@@ -509,7 +509,7 @@ class GitLabClient:
     async def get_merge_request_diffs(
         self, project_id: int | str, mr_iid: int
     ) -> list[dict[str, Any]]:
-        return await self.get(
+        return await self.get_all(
             f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/diffs"
         )
 
@@ -903,19 +903,37 @@ class GitLabClient:
         auth_url = self._append_private_token(upload_url)
 
         async def _fetch(url: str) -> tuple[bytes, str]:
-            response = await self.web_client.get(url, follow_redirects=True)
-            response.raise_for_status()
-            content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > max_size_bytes:
-                raise ValueError(
-                    f"File size {content_length} bytes exceeds max {max_size_bytes} bytes"
-                )
-            content = b""
-            async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
-                content += chunk
-                if len(content) > max_size_bytes:
-                    raise ValueError(f"File exceeds max allowed size of {max_size_bytes} bytes")
-            return content, response.headers.get("content-type", "application/octet-stream")
+            current_url = url
+            for _ in range(10):
+                response = await self.web_client.get(current_url, follow_redirects=False)
+                if response.is_redirect:
+                    next_request = response.next_request
+                    await response.aclose()
+                    if next_request is None:
+                        raise ValueError("Upload redirect did not include a target URL")
+                    current_url = str(next_request.url)
+                    if not self._is_gitlab_host(current_url):
+                        raise ValueError(
+                            "Upload redirect target does not match configured GitLab instance"
+                        )
+                    if "private_token=" not in current_url:
+                        current_url = self._append_private_token(current_url)
+                    continue
+
+                response.raise_for_status()
+                content_length = response.headers.get("content-length")
+                if content_length and int(content_length) > max_size_bytes:
+                    raise ValueError(
+                        f"File size {content_length} bytes exceeds max {max_size_bytes} bytes"
+                    )
+                content = b""
+                async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+                    content += chunk
+                    if len(content) > max_size_bytes:
+                        raise ValueError(f"File exceeds max allowed size of {max_size_bytes} bytes")
+                return content, response.headers.get("content-type", "application/octet-stream")
+
+            raise ValueError("Upload exceeded the maximum number of redirects")
 
         try:
             return await _fetch(auth_url)

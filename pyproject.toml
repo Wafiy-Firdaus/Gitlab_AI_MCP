@@ -14,6 +14,15 @@ dependencies = [
     "rich>=13.7.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "mypy>=1.8.0",
+]
+
 [project.scripts]
 gitlab-ai-mcp = "server:main"
 
@@ -24,6 +33,7 @@ dev-dependencies = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=5.0.0",
+    "mypy>=1.8.0",
 ]
 
 [tool.hatch.build.targets.wheel]

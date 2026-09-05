@@ -275,3 +275,40 @@ class TestPagination:
 
         results = await client.get_all("/items", limit=5)
         assert len(results) == 5
+
+    @pytest.mark.asyncio
+    async def test_merge_request_diffs_are_paginated(self, monkeypatch):
+        client = GitLabClient()
+        expected = [{"id": 1}, {"id": 2}]
+
+        async def fake_get_all(*args, **kwargs):
+            return expected
+
+        monkeypatch.setattr(client, "get_all", fake_get_all)
+
+        results = await client.get_merge_request_diffs("group/project", 7)
+
+        assert results == expected
+
+
+class TestUploadRedirects:
+    @pytest.mark.asyncio
+    async def test_fetch_upload_rejects_cross_host_redirect(self, monkeypatch):
+        import httpx
+
+        client = GitLabClient()
+
+        class RedirectResponse:
+            is_redirect = True
+            next_request = httpx.Request("GET", "https://attacker.example/file.png")
+
+            async def aclose(self):
+                pass
+
+        async def fake_get(*args, **kwargs):
+            return RedirectResponse()
+
+        monkeypatch.setattr(client.web_client, "get", fake_get)
+
+        with pytest.raises(ValueError, match="redirect target"):
+            await client.fetch_upload("/uploads/file.png")
