@@ -94,13 +94,6 @@ def test_build_absolute_url_uses_base_for_relative_paths():
     )
 
 
-def test_append_private_token_preserves_existing_query():
-    client = GitLabClient()
-    original = "https://gitlab.example.com/uploads/file.txt?foo=bar"
-    tokenized = client._append_private_token(original)
-    assert tokenized.startswith(original + "&private_token=")
-
-
 def test_redact_url_hides_private_token_value():
     client = GitLabClient()
     redacted = client._redact_url(
@@ -134,6 +127,34 @@ async def test_fetch_upload_rejects_external_url():
     client = GitLabClient()
     with pytest.raises(ValueError, match="does not match configured GitLab instance"):
         await client.fetch_upload("https://attacker.com/exfil.png")
+
+
+@pytest.mark.asyncio
+async def test_fetch_upload_uses_auth_header_not_query_token(monkeypatch):
+    import httpx
+
+    client = GitLabClient()
+    request = httpx.Request("GET", "https://gitlab.example.com/uploads/file.png")
+    response = httpx.Response(
+        200,
+        content=b"image",
+        headers={"content-type": "image/png"},
+        request=request,
+    )
+    calls = []
+
+    async def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return response
+
+    monkeypatch.setattr(client.web_client, "get", fake_get)
+
+    content, content_type = await client.fetch_upload("/uploads/file.png")
+
+    assert content == b"image"
+    assert content_type == "image/png"
+    assert calls[0][0] == "https://gitlab.example.com/uploads/file.png"
+    assert calls[0][1]["headers"] == {"PRIVATE-TOKEN": "test-token"}
 
 
 @pytest.mark.asyncio

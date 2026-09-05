@@ -11,17 +11,12 @@ source "${SCRIPT_DIR}/_common.sh"
 # Parse arguments
 # ---------------------------------------------------------------------------
 ARG_GITLAB_URL=""
-ARG_GITLAB_TOKEN=""
 NON_INTERACTIVE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --gitlab-url)
       ARG_GITLAB_URL="$2"
-      shift 2
-      ;;
-    --gitlab-token)
-      ARG_GITLAB_TOKEN="$2"
       shift 2
       ;;
     --non-interactive)
@@ -33,13 +28,12 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --gitlab-url <url>      Set GitLab instance URL"
-      echo "  --gitlab-token <token>  Set GitLab Personal Access Token"
       echo "  --non-interactive       Fail instead of prompting for missing values"
       echo "  -h, --help              Show this help"
       echo ""
       echo "Examples:"
       echo "  $0                      # Interactive mode"
-      echo "  $0 --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx"
+      echo "  $0 --gitlab-url https://gitlab.example.com"
       exit 0
       ;;
     *)
@@ -90,7 +84,7 @@ ENV_NEEDS_WRITE=false
 # Create .env from example if missing
 if [ ! -f "$ENV_FILE" ]; then
   if [ -f "${PROJECT_ROOT}/.env.example" ]; then
-    cp "${PROJECT_ROOT}/.env.example" "$ENV_FILE"
+    (umask 077 && cp "${PROJECT_ROOT}/.env.example" "$ENV_FILE")
     ENV_NEEDS_WRITE=true
   else
     err ".env.example not found. Cannot create .env."
@@ -107,9 +101,9 @@ if env_is_placeholder "$ENV_FILE" "GITLAB_TOKEN" "glpat-your-token"; then
   HAS_PLACEHOLDERS=true
 fi
 
-# If user explicitly passed flags, we always update (allows token rotation)
+# If the user explicitly passed a URL, always update it.
 FLAGS_PROVIDED=false
-if [ -n "$ARG_GITLAB_URL" ] || [ -n "$ARG_GITLAB_TOKEN" ]; then
+if [ -n "$ARG_GITLAB_URL" ]; then
   FLAGS_PROVIDED=true
 fi
 
@@ -121,16 +115,11 @@ if $HAS_PLACEHOLDERS || $FLAGS_PROVIDED; then
   if [ -n "$ARG_GITLAB_URL" ]; then
     GITLAB_URL="$ARG_GITLAB_URL"
   fi
-  if [ -n "$ARG_GITLAB_TOKEN" ]; then
-    GITLAB_TOKEN="$ARG_GITLAB_TOKEN"
-  fi
-
   # Prompt interactively for anything still missing
   if [ -z "$GITLAB_URL" ] || [ -z "$GITLAB_TOKEN" ]; then
     if $NON_INTERACTIVE; then
       err ".env is missing or contains placeholder values."
-      echo "   Provide values via flags:"
-      echo "     $0 --gitlab-url <url> --gitlab-token <token>"
+      echo "   Provide --gitlab-url and enter the token when prompted."
       exit 1
     fi
 
@@ -175,6 +164,8 @@ else
   ok ".env already configured"
 fi
 
+chmod 600 "$ENV_FILE"
+
 # ---------------------------------------------------------------------------
 # 2b. Validate token against GitLab
 # ---------------------------------------------------------------------------
@@ -183,7 +174,7 @@ GITLAB_TOKEN=$(env_get "$ENV_FILE" "GITLAB_TOKEN")
 
 info "Verifying GitLab credentials..."
 
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${GITLAB_URL}/api/v4/user" 2>/dev/null || true)
+HTTP_CODE=$(printf 'PRIVATE-TOKEN: %s\n' "$GITLAB_TOKEN" | curl -s -o /dev/null -w "%{http_code}" -H @- "${GITLAB_URL}/api/v4/user" 2>/dev/null || true)
 [ -z "$HTTP_CODE" ] && HTTP_CODE="000"
 
 if [ "$HTTP_CODE" = "200" ]; then
