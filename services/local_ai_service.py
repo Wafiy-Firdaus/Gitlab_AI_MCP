@@ -44,6 +44,29 @@ class LocalAIService:
 
         # Redact GitLab Tokens
         text = re.sub(r"glpat-[a-zA-Z0-9\-]{20,}", "[REDACTED_GITLAB_TOKEN]", text)
+        # Redact GitHub tokens (classic, OAuth/app, and fine-grained tokens).
+        text = re.sub(
+            r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
+            "[REDACTED_GITHUB_TOKEN]",
+            text,
+        )
+        # Redact JWT tokens before chat tokens because JWTs also have three
+        # dot-separated components.
+        text = re.sub(
+            r"eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*",
+            "[REDACTED_JWT]",
+            text,
+        )
+        # Redact Slack tokens and Discord bot tokens. Discord tokens have three
+        # dot-separated components; requiring that shape avoids matching prose.
+        text = re.sub(
+            r"\bxox[baprs]-[A-Za-z0-9-]{10,}|"
+            r"\bxapp-[0-9A-Za-z-]{10,}|"
+            r"\bmfa\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b|"
+            r"\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{20,}\b",
+            "[REDACTED_CHAT_TOKEN]",
+            text,
+        )
         # Redact AWS Access Keys
         text = re.sub(r"AKIA[0-9A-Z]{16}", "[REDACTED_AWS_KEY]", text)
         # Redact AWS Secret Keys (basic)
@@ -53,24 +76,68 @@ class LocalAIService:
             text,
             flags=re.IGNORECASE,
         )
-        # Redact JWT tokens
-        text = re.sub(
-            r"eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*",
-            "[REDACTED_JWT]",
-            text,
-        )
-        # Redact PEM/SSH private key headers
-        text = re.sub(
-            r"-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
-            "[REDACTED_PRIVATE_KEY]",
-            text,
-        )
         # Redact GCP service account keys
         text = re.sub(
             r"\"type\":\s*\"service_account\".*?\"private_key\":\s*\"-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----\"",
             '"type": "service_account", ... [REDACTED_GCP_KEY]',
             text,
             flags=re.DOTALL,
+        )
+        # Redact complete PEM/SSH private keys, including the body.  Matching
+        # the closing marker prevents leaking the key material after the header.
+        text = re.sub(
+            r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----.*?"
+            r"-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----",
+            "[REDACTED_PRIVATE_KEY]",
+            text,
+            flags=re.DOTALL,
+        )
+        # Keep the previous behavior for truncated logs containing only a
+        # private-key header.
+        text = re.sub(
+            r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----",
+            "[REDACTED_PRIVATE_KEY]",
+            text,
+        )
+        # Redact database URLs only when they contain credentials.  This keeps
+        # harmless references such as "postgres://localhost:5432/app" intact.
+        text = re.sub(
+            r"\b(?:jdbc:)?(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|"
+            r"redis|rediss|mssql|sqlserver)://[^@\s\"'<>:/]+:[^@\s\"<>]+@[^"
+            r"\s\"'<>]+",
+            "[REDACTED_DATABASE_URL]",
+            text,
+            flags=re.IGNORECASE,
+        )
+        # OAuth client secrets are frequently emitted as environment variables
+        # or query parameters and are distinct from non-sensitive client IDs.
+        text = re.sub(
+            r"(?i)(\b(?:oauth[_-]?)?client[_-]?secret\s*[:=]\s*)[^\s&\"']{8,}",
+            r"\1[REDACTED_OAUTH_SECRET]",
+            text,
+        )
+        text = re.sub(
+            r"(?i)([?&](?:oauth[_-]?)?client[_-]?secret=)[^&\s]+",
+            r"\1[REDACTED_OAUTH_SECRET]",
+            text,
+        )
+        # Docker and Kubernetes credentials commonly appear in CI environment
+        # dumps and config files.  Restrict this to credential-named fields.
+        text = re.sub(
+            r"(?i)(\b(?:docker[_-]?(?:password|token|auth(?:_config)?)|"
+            r"kube(?:rnetes)?[_-]?token)\s*[:=]\s*)[^\s,}\"']{8,}",
+            r"\1[REDACTED_CONTAINER_CREDENTIAL]",
+            text,
+        )
+        text = re.sub(
+            r"(?i)([\"']auth[\"']\s*:\s*[\"'])[^\"']{8,}([\"'])",
+            r"\1[REDACTED_CONTAINER_CREDENTIAL]\2",
+            text,
+        )
+        text = re.sub(
+            r"(?i)(\bauthorization\s*:\s*bearer\s+)[A-Za-z0-9._~+/=-]{12,}",
+            r"\1[REDACTED_CONTAINER_CREDENTIAL]",
+            text,
         )
         # Redact private IPv4 ranges (avoids version numbers like 1.2.3.4)
         text = re.sub(
