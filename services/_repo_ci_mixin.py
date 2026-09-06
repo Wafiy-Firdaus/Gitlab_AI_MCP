@@ -19,6 +19,11 @@ class _RepoCIMixin:
     client: GitLabClient
     local_ai: LocalAIService
 
+    if TYPE_CHECKING:
+        async def analyze_failed_job(
+            self, project_id: int | str, job_id: int | str
+        ) -> dict[str, Any]: ...
+
     async def list_repository_files(
         self, project_id: int | str, path: str = "", ref: str = "main"
     ) -> dict[str, Any]:
@@ -118,7 +123,7 @@ class _RepoCIMixin:
         processed_results = []
         errors = []
         for i, res in enumerate(results):
-            if isinstance(res, Exception):
+            if isinstance(res, BaseException):
                 errors.append(f"Error fetching {file_paths[i]}: {str(res)}")
             else:
                 processed_results.append(
@@ -184,7 +189,7 @@ class _RepoCIMixin:
         processed_results = []
         errors = []
         for i, res in enumerate(results):
-            if isinstance(res, Exception):
+            if isinstance(res, BaseException):
                 errors.append(f"Error fetching branch '{branches[i]}': {str(res)}")
             else:
                 processed_results.append(
@@ -637,6 +642,19 @@ class _RepoCIMixin:
             "next_action": "Review or manage these variables for CI/CD configuration.",
         }
 
+    async def list_project_environments(self, project_id: int | str) -> dict[str, Any]:
+        environments = await self.client.list_project_environments(project_id)
+
+        return {
+            "summary": f"Found {len(environments)} environments for project {project_id}",
+            "key_findings": [
+                f"{environment.get('name', 'N/A')}: {environment.get('state', 'unknown')}"
+                for environment in environments[:10]
+            ],
+            "details": {"environments": environments},
+            "next_action": "Review deployment environment status and URLs.",
+        }
+
     async def create_project_variable(
         self,
         project_id: int | str,
@@ -674,7 +692,7 @@ class _RepoCIMixin:
         protected: bool | None = None,
         masked: bool | None = None,
     ) -> dict[str, Any]:
-        data = {}
+        data: dict[str, Any] = {}
         if value is not None:
             data["value"] = value
         if variable_type is not None:

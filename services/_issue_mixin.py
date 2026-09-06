@@ -16,6 +16,9 @@ class _IssueMixin:
     client: GitLabClient
     local_ai: LocalAIService
 
+    if TYPE_CHECKING:
+        async def _fetch_uploads(self, urls: list[str]) -> list[dict[str, Any]]: ...
+
     # --- Issue CRUD ---
 
     async def get_issue_details(

@@ -128,7 +128,7 @@ class LocalAIService:
             logger.error(f"local_ai_error: {str(e)}")
             return f"Error: Local AI ({self.model}) is unavailable. Ensure Ollama is running at {self.base_url}. Details: {str(e)}"
 
-    async def triage_job_log(self, job_id: int, log_content: str) -> str:
+    async def triage_job_log(self, job_id: int | str, log_content: str) -> str:
         """
         Specific workflow for triaging a failed job log locally.
         Uses a 'DevOps First-Responder' persona to find root causes.

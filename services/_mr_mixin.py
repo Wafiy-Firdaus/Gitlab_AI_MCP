@@ -25,6 +25,9 @@ class _MRMixin:
     client: GitLabClient
     local_ai: LocalAIService
 
+    if TYPE_CHECKING:
+        async def _fetch_uploads(self, urls: list[str]) -> list[dict[str, Any]]: ...
+
     async def get_merge_request_details(
         self, project_id: int | str, mr_iid: int | str, include_jobs: bool = False
     ) -> dict[str, Any]:
