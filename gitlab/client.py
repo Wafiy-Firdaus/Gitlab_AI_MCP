@@ -353,14 +353,20 @@ class GitLabClient:
         return all_results
 
     async def post(self, endpoint: str, data: dict[str, Any] | None = None) -> Any:
+        if settings.gitlab_read_only:
+            raise PermissionError("GitLab write operations are disabled by GITLAB_READ_ONLY")
         response = await self._request("POST", endpoint, json=data)
         return response.json() if response.content else None
 
     async def put(self, endpoint: str, data: dict[str, Any] | None = None) -> Any:
+        if settings.gitlab_read_only:
+            raise PermissionError("GitLab write operations are disabled by GITLAB_READ_ONLY")
         response = await self._request("PUT", endpoint, json=data)
         return response.json() if response.content else None
 
     async def delete(self, endpoint: str) -> Any:
+        if settings.gitlab_read_only:
+            raise PermissionError("GitLab write operations are disabled by GITLAB_READ_ONLY")
         response = await self._request("DELETE", endpoint)
         return response.json() if response.content else None
 
@@ -476,12 +482,16 @@ class GitLabClient:
             f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}", data=data
         )
 
-    async def approve_merge_request(self, project_id: int | str, mr_iid: int | str) -> dict[str, Any]:
+    async def approve_merge_request(
+        self, project_id: int | str, mr_iid: int | str
+    ) -> dict[str, Any]:
         return await self.post(
             f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/approve"
         )
 
-    async def get_issue_notes(self, project_id: int | str, issue_iid: int | str) -> list[dict[str, Any]]:
+    async def get_issue_notes(
+        self, project_id: int | str, issue_iid: int | str
+    ) -> list[dict[str, Any]]:
         return await self.get_all(
             f"/projects/{self._format_project_id(project_id)}/issues/{issue_iid}/notes"
         )
@@ -729,7 +739,11 @@ class GitLabClient:
         )
 
     async def create_merge_request_discussion(
-        self, project_id: int | str, mr_iid: int | str, body: str, position: dict[str, Any] | None = None
+        self,
+        project_id: int | str,
+        mr_iid: int | str,
+        body: str,
+        position: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         data: dict[str, Any] = {"body": body}
         if position:
@@ -770,7 +784,9 @@ class GitLabClient:
             data=data,
         )
 
-    async def publish_merge_request_draft_notes(self, project_id: int | str, mr_iid: int | str) -> Any:
+    async def publish_merge_request_draft_notes(
+        self, project_id: int | str, mr_iid: int | str
+    ) -> Any:
         response = await self._request(
             "POST",
             f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/draft_notes/bulk_publish",
@@ -787,7 +803,12 @@ class GitLabClient:
         return response.json() if response.content else None
 
     async def update_note(
-        self, project_id: int | str, resource_type: str, resource_iid: int | str, note_id: int | str, body: str
+        self,
+        project_id: int | str,
+        resource_type: str,
+        resource_iid: int | str,
+        note_id: int | str,
+        body: str,
     ) -> dict[str, Any]:
         return await self.put(
             f"/projects/{self._format_project_id(project_id)}/{resource_type}/{resource_iid}/notes/{note_id}",
@@ -957,7 +978,9 @@ class GitLabClient:
                 return await _fetch(upload_url, authenticated=False)
             raise
 
-    async def cancel_pipeline(self, project_id: int | str, pipeline_id: int | str) -> dict[str, Any]:
+    async def cancel_pipeline(
+        self, project_id: int | str, pipeline_id: int | str
+    ) -> dict[str, Any]:
         return await self.post(
             f"/projects/{self._format_project_id(project_id)}/pipelines/{pipeline_id}/cancel"
         )
@@ -972,7 +995,9 @@ class GitLabClient:
             f"/projects/{self._format_project_id(project_id)}/jobs/{job_id}/play"
         )
 
-    async def rebase_merge_request(self, project_id: int | str, mr_iid: int | str) -> dict[str, Any]:
+    async def rebase_merge_request(
+        self, project_id: int | str, mr_iid: int | str
+    ) -> dict[str, Any]:
         return await self.put(
             f"/projects/{self._format_project_id(project_id)}/merge_requests/{mr_iid}/rebase"
         )

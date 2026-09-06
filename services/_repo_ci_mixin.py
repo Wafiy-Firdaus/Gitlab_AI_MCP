@@ -20,6 +20,7 @@ class _RepoCIMixin:
     local_ai: LocalAIService
 
     if TYPE_CHECKING:
+
         async def analyze_failed_job(
             self, project_id: int | str, job_id: int | str
         ) -> dict[str, Any]: ...

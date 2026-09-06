@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     gitlab_max_retries: int = Field(3, alias="GITLAB_MAX_RETRIES")
     gitlab_retry_delay: float = Field(1.0, alias="GITLAB_RETRY_DELAY")
+    gitlab_read_only: bool = Field(False, alias="GITLAB_READ_ONLY")
     debug: bool = Field(False, alias="DEBUG")
 
     # Local AI Settings (Ollama)

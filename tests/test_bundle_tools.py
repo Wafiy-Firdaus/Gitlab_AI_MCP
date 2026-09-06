@@ -127,9 +127,7 @@ class TestBundleProjectIntelligence:
         assert "next_action" in result
 
     @pytest.mark.asyncio
-    async def test_empty_project_no_activity(
-        self, service: GitLabService, mock_client: Any
-    ):
+    async def test_empty_project_no_activity(self, service: GitLabService, mock_client: Any):
         mock_client.get_project = AsyncMock(
             return_value={
                 "id": 1,
@@ -186,9 +184,7 @@ class TestBundlePipelineContext:
         assert details["failed_job_analysis"] is None
 
     @pytest.mark.asyncio
-    async def test_analyzes_first_failed_job(
-        self, service: GitLabService, mock_client: Any
-    ):
+    async def test_analyzes_first_failed_job(self, service: GitLabService, mock_client: Any):
         mock_client.get_pipeline = AsyncMock(
             return_value={
                 "id": 51,
@@ -216,9 +212,7 @@ class TestBundlePipelineContext:
         assert result["details"]["failed_job_analysis"] is not None
 
     @pytest.mark.asyncio
-    async def test_graceful_on_log_fetch_error(
-        self, service: GitLabService, mock_client: Any
-    ):
+    async def test_graceful_on_log_fetch_error(self, service: GitLabService, mock_client: Any):
         mock_client.get_pipeline = AsyncMock(
             return_value={
                 "id": 52,

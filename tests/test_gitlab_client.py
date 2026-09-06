@@ -259,6 +259,14 @@ class TestRetryLogic:
             await client._request("GET", "/test")
         assert call_count == 1
 
+    @pytest.mark.asyncio
+    async def test_read_only_mode_blocks_writes(self, monkeypatch):
+        client = GitLabClient()
+        monkeypatch.setattr("config.settings.gitlab_read_only", True)
+
+        with pytest.raises(PermissionError, match="GITLAB_READ_ONLY"):
+            await client.post("/projects/1/issues", data={"title": "blocked"})
+
 
 class TestPagination:
     @pytest.mark.asyncio

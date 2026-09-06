@@ -111,6 +111,7 @@ service = GitLabService(client)
 | ------------------- | -------- | ------------------------ |
 | `GITLAB_URL`        | Yes      | —                        |
 | `GITLAB_TOKEN`      | Yes      | —                        |
+| `GITLAB_READ_ONLY`  | No       | `false`                  |
 | `DEBUG`             | No       | `false`                  |
 | `LOCAL_AI_URL`      | No       | `http://ollama:11434`    |
 | `LOCAL_AI_MODEL`    | No       | `llama3.1:8b`            |

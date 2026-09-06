@@ -26,6 +26,7 @@ class _MRMixin:
     local_ai: LocalAIService
 
     if TYPE_CHECKING:
+
         async def _fetch_uploads(self, urls: list[str]) -> list[dict[str, Any]]: ...
 
     async def get_merge_request_details(
