@@ -130,6 +130,13 @@ async def test_fetch_upload_rejects_external_url():
 
 
 @pytest.mark.asyncio
+async def test_fetch_upload_rejects_http_url():
+    client = GitLabClient()
+    with pytest.raises(ValueError, match="must use HTTPS"):
+        await client.fetch_upload("http://gitlab.example.com/uploads/file.png")
+
+
+@pytest.mark.asyncio
 async def test_fetch_upload_uses_auth_header_not_query_token(monkeypatch):
     import httpx
 
@@ -332,4 +339,25 @@ class TestUploadRedirects:
         monkeypatch.setattr(client.web_client, "get", fake_get)
 
         with pytest.raises(ValueError, match="redirect target"):
+            await client.fetch_upload("/uploads/file.png")
+
+    @pytest.mark.asyncio
+    async def test_fetch_upload_rejects_http_redirect(self, monkeypatch):
+        import httpx
+
+        client = GitLabClient()
+
+        class RedirectResponse:
+            is_redirect = True
+            next_request = httpx.Request("GET", "http://gitlab.example.com/file.png")
+
+            async def aclose(self):
+                pass
+
+        async def fake_get(*args, **kwargs):
+            return RedirectResponse()
+
+        monkeypatch.setattr(client.web_client, "get", fake_get)
+
+        with pytest.raises(ValueError, match="must use HTTPS"):
             await client.fetch_upload("/uploads/file.png")

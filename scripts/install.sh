@@ -151,6 +151,14 @@ if $HAS_PLACEHOLDERS || $FLAGS_PROVIDED; then
     err "A real GitLab token is required."
     exit 1
   fi
+  case "$GITLAB_URL" in
+    https://*) ;;
+    http://localhost:*|http://127.0.0.1:*|http://localhost|http://127.0.0.1) ;;
+    *)
+      err "GITLAB_URL must use HTTPS, except for localhost development."
+      exit 1
+      ;;
+  esac
 
   # Write / update .env safely (preserve existing keys, add missing ones)
   env_set "$ENV_FILE" "GITLAB_URL"  "$GITLAB_URL"
@@ -171,6 +179,15 @@ chmod 600 "$ENV_FILE"
 # ---------------------------------------------------------------------------
 GITLAB_URL=$(env_get "$ENV_FILE" "GITLAB_URL")
 GITLAB_TOKEN=$(env_get "$ENV_FILE" "GITLAB_TOKEN")
+
+case "$GITLAB_URL" in
+  https://*) ;;
+  http://localhost:*|http://127.0.0.1:*|http://localhost|http://127.0.0.1) ;;
+  *)
+    err "Configured GITLAB_URL must use HTTPS, except for localhost development."
+    exit 1
+    ;;
+esac
 
 info "Verifying GitLab credentials..."
 

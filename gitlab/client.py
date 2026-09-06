@@ -98,6 +98,13 @@ class GitLabClient:
         gitlab_parsed = urllib.parse.urlparse(settings.gitlab_url)
         return parsed.netloc == gitlab_parsed.netloc
 
+    def _is_secure_gitlab_url(self, url: str) -> bool:
+        """Allow HTTPS GitLab URLs, plus HTTP for loopback development hosts."""
+        parsed = urllib.parse.urlparse(url)
+        return parsed.scheme == "https" or (
+            parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        )
+
     def parse_gitlab_url(self, url: str) -> dict[str, Any]:
         """
         Parses a GitLab URL to extract project path, resource type, and ID.
@@ -894,6 +901,8 @@ class GitLabClient:
             raise ValueError(
                 f"Upload URL host does not match configured GitLab instance: {upload_url}"
             )
+        if not self._is_secure_gitlab_url(upload_url):
+            raise ValueError("Upload URL must use HTTPS except for loopback development hosts")
 
         async def _fetch(url: str, authenticated: bool = True) -> tuple[bytes, str]:
             current_url = url
@@ -913,6 +922,10 @@ class GitLabClient:
                     if not self._is_gitlab_host(current_url):
                         raise ValueError(
                             "Upload redirect target does not match configured GitLab instance"
+                        )
+                    if not self._is_secure_gitlab_url(current_url):
+                        raise ValueError(
+                            "Upload redirect target must use HTTPS except for loopback development hosts"
                         )
                     continue
 
