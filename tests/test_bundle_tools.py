@@ -1,5 +1,6 @@
 """Tests for bundle tools — parallel asyncio.gather paths in GitLabService."""
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -9,19 +10,19 @@ from services.gitlab_service import GitLabService
 
 
 @pytest.fixture
-def mock_client() -> GitLabClient:
+def mock_client() -> Any:
     client = GitLabClient()
     return client
 
 
 @pytest.fixture
-def service(mock_client: GitLabClient) -> GitLabService:
+def service(mock_client: Any) -> GitLabService:
     return GitLabService(mock_client)
 
 
 class TestBundleMergeRequestContext:
     @pytest.mark.asyncio
-    async def test_returns_expected_shape(self, service: GitLabService, mock_client: GitLabClient):
+    async def test_returns_expected_shape(self, service: GitLabService, mock_client: Any):
         mock_client.get_merge_request = AsyncMock(
             return_value={
                 "iid": 5,
@@ -59,7 +60,7 @@ class TestBundleMergeRequestContext:
         assert "next_action" in result
 
     @pytest.mark.asyncio
-    async def test_filters_system_notes(self, service: GitLabService, mock_client: GitLabClient):
+    async def test_filters_system_notes(self, service: GitLabService, mock_client: Any):
         mock_client.get_merge_request = AsyncMock(
             return_value={
                 "iid": 1,
@@ -84,7 +85,7 @@ class TestBundleMergeRequestContext:
 
 class TestBundleProjectIntelligence:
     @pytest.mark.asyncio
-    async def test_returns_dashboard_shape(self, service: GitLabService, mock_client: GitLabClient):
+    async def test_returns_dashboard_shape(self, service: GitLabService, mock_client: Any):
         mock_client.get_project = AsyncMock(
             return_value={
                 "id": 10,
@@ -126,9 +127,7 @@ class TestBundleProjectIntelligence:
         assert "next_action" in result
 
     @pytest.mark.asyncio
-    async def test_empty_project_no_activity(
-        self, service: GitLabService, mock_client: GitLabClient
-    ):
+    async def test_empty_project_no_activity(self, service: GitLabService, mock_client: Any):
         mock_client.get_project = AsyncMock(
             return_value={
                 "id": 1,
@@ -156,7 +155,7 @@ class TestBundleProjectIntelligence:
 class TestBundlePipelineContext:
     @pytest.mark.asyncio
     async def test_returns_shape_for_passing_pipeline(
-        self, service: GitLabService, mock_client: GitLabClient
+        self, service: GitLabService, mock_client: Any
     ):
         mock_client.get_pipeline = AsyncMock(
             return_value={
@@ -185,9 +184,7 @@ class TestBundlePipelineContext:
         assert details["failed_job_analysis"] is None
 
     @pytest.mark.asyncio
-    async def test_analyzes_first_failed_job(
-        self, service: GitLabService, mock_client: GitLabClient
-    ):
+    async def test_analyzes_first_failed_job(self, service: GitLabService, mock_client: Any):
         mock_client.get_pipeline = AsyncMock(
             return_value={
                 "id": 51,
@@ -215,9 +212,7 @@ class TestBundlePipelineContext:
         assert result["details"]["failed_job_analysis"] is not None
 
     @pytest.mark.asyncio
-    async def test_graceful_on_log_fetch_error(
-        self, service: GitLabService, mock_client: GitLabClient
-    ):
+    async def test_graceful_on_log_fetch_error(self, service: GitLabService, mock_client: Any):
         mock_client.get_pipeline = AsyncMock(
             return_value={
                 "id": 52,

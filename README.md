@@ -189,6 +189,7 @@ All settings go in your `.env` file:
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | **Yes** | — | Base URL of your GitLab instance |
 | `GITLAB_TOKEN` | **Yes** | — | Personal Access Token (`api` scope) |
+| `GITLAB_READ_ONLY` | No | `false` | Disable all GitLab write operations when `true` |
 | `DEBUG` | No | `false` | Enable verbose console logging |
 | `LOCAL_AI_URL` | No | `http://ollama:11434` | Ollama endpoint (Options B/C only) |
 | `LOCAL_AI_MODEL` | No | `llama3.1:8b` | Ollama model name |

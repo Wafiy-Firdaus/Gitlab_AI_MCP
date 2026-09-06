@@ -302,6 +302,7 @@ All settings are read from `.env` (see `.env.example` for template):
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | **Yes** | — | Base URL of your GitLab instance |
 | `GITLAB_TOKEN` | **Yes** | — | Personal Access Token (`api` scope) |
+| `GITLAB_READ_ONLY` | No | `false` | Disable all GitLab write operations when `true` |
 | `DEBUG` | No | `false` | Enable verbose console logging |
 | `LOCAL_AI_URL` | No | `http://localhost:11434` | Ollama endpoint (overridden to `http://ollama:11434` in Docker Compose) |
 | `LOCAL_AI_MODEL` | No | `llama3.1:8b` | Ollama model name |
