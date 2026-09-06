@@ -89,10 +89,6 @@ class GitLabClient:
             return url_or_path
         return f"{settings.gitlab_url.rstrip('/')}{url_or_path}"
 
-    def _append_private_token(self, url: str) -> str:
-        separator = "&" if "?" in url else "?"
-        return f"{url}{separator}private_token={settings.gitlab_token}"
-
     def _redact_url(self, url: str) -> str:
         return re.sub(r"([?&]private_token=)[^&]+", r"\1[REDACTED]", url)
 
@@ -899,13 +895,15 @@ class GitLabClient:
                 f"Upload URL host does not match configured GitLab instance: {upload_url}"
             )
 
-        # Append private_token as query param — GitLab web routes don't accept PRIVATE-TOKEN header
-        auth_url = self._append_private_token(upload_url)
-
-        async def _fetch(url: str) -> tuple[bytes, str]:
+        async def _fetch(url: str, authenticated: bool = True) -> tuple[bytes, str]:
             current_url = url
             for _ in range(10):
-                response = await self.web_client.get(current_url, follow_redirects=False)
+                headers = {"PRIVATE-TOKEN": settings.gitlab_token} if authenticated else None
+                response = await self.web_client.get(
+                    current_url,
+                    headers=headers,
+                    follow_redirects=False,
+                )
                 if response.is_redirect:
                     next_request = response.next_request
                     await response.aclose()
@@ -916,8 +914,6 @@ class GitLabClient:
                         raise ValueError(
                             "Upload redirect target does not match configured GitLab instance"
                         )
-                    if "private_token=" not in current_url:
-                        current_url = self._append_private_token(current_url)
                     continue
 
                 response.raise_for_status()
@@ -936,16 +932,16 @@ class GitLabClient:
             raise ValueError("Upload exceeded the maximum number of redirects")
 
         try:
-            return await _fetch(auth_url)
+            return await _fetch(upload_url)
         except httpx.HTTPStatusError as e:
-            # If CDN redirect strips auth and returns 401/403, retry without any auth
+            # Public/CDN-backed uploads may not accept API authentication headers.
             if e.response.status_code in (401, 403):
                 logger.warning(
                     "upload_auth_failed_falling_back_to_anonymous",
-                    url=self._redact_url(auth_url),
+                    url=self._redact_url(upload_url),
                     status_code=e.response.status_code,
                 )
-                return await _fetch(upload_url)
+                return await _fetch(upload_url, authenticated=False)
             raise
 
     async def cancel_pipeline(self, project_id: int | str, pipeline_id: int) -> dict[str, Any]:

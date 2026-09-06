@@ -48,7 +48,7 @@ cd ~/.gitlab-ai-mcp
 
 > **Already have a token ready?** Skip the prompt:
 > ```bash
-> ./scripts/install.sh --gitlab-url https://gitlab.example.com --gitlab-token glpat-your-token
+> ./scripts/install.sh --gitlab-url https://gitlab.example.com
 > ```
 
 **Option C — Manual install**
